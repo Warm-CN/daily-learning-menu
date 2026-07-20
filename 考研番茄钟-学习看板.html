@@ -1,0 +1,34 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考研番茄钟 · 学习看板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js">
+    </script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="nav">
+        <span class="logo-text">🍅 考研看板</span>
+        <button class="nav-btn active" data-page="home">首页</button>
+        <button class="nav-btn" data-page="timer">计时</button>
+        <button class="nav-btn" data-page="stats">统计</button>
+        <button class="nav-btn" data-page="calendar">日历</button>
+    </nav>
+    <section class="page active" id="page-home"></section>
+    <section class="page" id="page-timer"></section>
+    <section class="page" id="page-stats"></section>
+    <section class="page" id="page-calendar"></section>
+    <div class="foot-bar">
+        <span>今日：<strong id="footToday">0h</strong></span>
+        <span>本周：<strong id="footWeek">0h</strong></span>
+    </div>
+    <div class="toast" id="toast"></div>
+    <div class="badge-pop" id="badgePop"></div>
+    <script src="js/storage.js"></script>
+    <script src="js/timer.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
+
