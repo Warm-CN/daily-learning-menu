@@ -40,7 +40,7 @@ $env:FLASK_APP="app:app"
    sudo systemctl enable --now kaoyan.service kaoyan-backup.timer
    ```
 
-Gunicorn 固定使用一个 worker、四个线程，以适配小规模 SQLite 写入。SQLite 已启用 WAL、外键和 5 秒 busy timeout。
+Gunicorn 固定使用一个 worker、四个线程，默认监听 `127.0.0.1:8010`，以适配小规模 SQLite 写入并避免占用公网 80/443 端口。SQLite 已启用 WAL、外键和 5 秒 busy timeout。
 
 ## 管理命令
 
