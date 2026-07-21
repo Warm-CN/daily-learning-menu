@@ -1,36 +1,72 @@
-# OS generated files
+# Operating systems
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Editor / IDE files
+# Editors
 .vscode/
 .idea/
+.vs/
+.agents/
+.codex/
 *.swp
 *.swo
+*~
 
 # Logs
 *.log
 npm-debug.log*
+gunicorn-access.log
+gunicorn-error.log
 
-# Temporary files
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Flask / SQLite runtime data
+instance/
+backups/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Node / browser tooling
+node_modules/
+coverage/
+.playwright/
+playwright-report/
+test-results/
+
+# Temporary files and generated screenshots
 tmp/
 temp/
 *.tmp
+page-check.png
+screenshot-*.png
 
-# Local environment / cache
-.env
-.env.*
-
-# Node / package manager artifacts (if added later)
-node_modules/
-package-lock.json
-
-# Browser / test artifacts
-coverage/
-.playwright/
-
-# Backup / exported data (optional, if you don't want to track local exports)
+# Local exports and archives
 *.bak
 *.zip
-/tests
+考研学习数据-*.json

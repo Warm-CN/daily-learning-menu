@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup Kaoyan SQLite database
+
+[Service]
+Type=oneshot
+User=kaoyan
+Group=kaoyan
+WorkingDirectory=/opt/kaoyan/server
+EnvironmentFile=/opt/kaoyan/server/.env
+ExecStart=/opt/kaoyan/server/.venv/bin/python backup_db.py

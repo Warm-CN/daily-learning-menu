@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}考研看板{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='server.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+{% if current_user.is_authenticated %}
+<header class="topbar">
+    <a class="brand" href="{{ url_for('dashboard') }}">🍅 考研看板</a>
+    <nav>
+        <a href="{{ url_for('dashboard') }}">学习看板</a>
+        <a href="{{ url_for('friends_page') }}">好友</a>
+    </nav>
+    <div class="account"><span>{{ current_user.username }}</span>
+        <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-btn">退出</button></form>
+    </div>
+</header>
+{% endif %}
+<main class="shell">{% block content %}{% endblock %}</main>
+<div id="toast" class="toast"></div>
+<script>
+const csrfToken=document.querySelector('meta[name="csrf-token"]').content;
+async function apiFetch(url,options={}){
+  options.headers={...(options.headers||{}),'X-CSRFToken':csrfToken};
+  if(options.body && !(options.body instanceof FormData)){options.headers['Content-Type']='application/json';if(typeof options.body!=='string')options.body=JSON.stringify(options.body)}
+  const response=await fetch(url,options); const payload=await response.json().catch(()=>({ok:false,error:{message:'服务器响应异常'}}));
+  if(!response.ok||!payload.ok){const error=new Error(payload.error?.message||'请求失败');error.status=response.status;error.code=payload.error?.code;throw error} return payload.data;
+}
+function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2400)}
+{% if current_user.is_authenticated %}
+async function heartbeat(){try{await apiFetch('/api/presence',{method:'POST'})}catch(error){if(error.status===401)location.href='/login'}}
+heartbeat();let presenceTimer=setInterval(heartbeat,20000);document.addEventListener('visibilitychange',()=>{clearInterval(presenceTimer);presenceTimer=setInterval(heartbeat,document.hidden?60000:20000);if(!document.hidden)heartbeat()});
+{% endif %}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

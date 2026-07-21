@@ -1,0 +1,9 @@
+Flask>=3.1,<4
+Flask-SQLAlchemy>=3.1,<4
+Flask-Login>=0.6,<1
+Flask-WTF>=1.2,<2
+Flask-Limiter>=3.8,<5
+gunicorn>=23,<24
+python-dotenv>=1,<2
+tzdata>=2025.2
+pytest>=8,<9
