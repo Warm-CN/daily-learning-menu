@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block title %}好友 · 考研看板{% endblock %}
-{% block content %}<div class="page-title"><div><h1>好友状态</h1><p class="muted">查看好友是否在线、正在学习什么以及今日完成时长</p></div></div>
-<div class="card"><h3>添加好友</h3><div class="inline"><input id="friendQuery" placeholder="输入完整用户名"><button id="addFriend" class="primary">直接添加</button></div><div id="searchResults"></div></div>
+{% block content %}<div class="page-title"><div><span class="eyebrow">STUDY TOGETHER</span><h1>好友状态</h1><p class="muted">查看好友是否在线、正在学习什么以及今日完成时长</p></div><span class="page-icon">👥</span></div>
+<div class="card"><div class="card-title">➕ 添加好友</div><div class="friend-search"><input id="friendQuery" placeholder="输入完整用户名"><button id="addFriend" class="primary">直接添加</button></div><div id="searchResults"></div></div>
 <div id="friendList" class="friend-grid"></div>{% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='friends.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='friends.js', v='20260722-lastseen1') }}"></script>{% endblock %}

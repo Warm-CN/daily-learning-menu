@@ -1,0 +1,43 @@
+{% extends 'base.html' %}{% block title %}用户管理 · 考研看板{% endblock %}
+{% block content %}
+<section class="admin-page">
+  <div class="page-title admin-title"><div><span class="eyebrow">ADMIN CONSOLE</span><h1>用户管理</h1><p class="muted">审批注册申请，管理正式用户的登录凭据与数据</p></div><span class="page-icon">🛡️</span></div>
+  <div class="admin-summary">
+    <div class="admin-summary-card pending"><span>等待审批</span><strong>{{ pending_users|length }}</strong></div>
+    <div class="admin-summary-card approved"><span>正式用户</span><strong>{{ approved_users|length }}</strong></div>
+  </div>
+
+  <div class="admin-section-head"><div><h2>注册申请</h2><p>批准后会为用户创建默认学习项目</p></div><span class="admin-count">{{ pending_users|length }}</span></div>
+  <div class="admin-user-list" id="pendingUsers">
+    {% for user in pending_users %}
+    <article class="admin-user-card pending" data-user-id="{{ user.id }}">
+      <div class="admin-user-avatar">⏳</div>
+      <div class="admin-user-main"><h3>{{ user.username }}</h3><p>注册于 {{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</p><span class="admin-status pending">待审批</span></div>
+      <div class="admin-user-actions"><button class="primary" data-admin-action="approve" data-user-id="{{ user.id }}" data-username="{{ user.username }}">批准</button><button class="danger" data-admin-action="delete" data-user-id="{{ user.id }}" data-username="{{ user.username }}">删除</button></div>
+    </article>
+    {% else %}
+    <div class="admin-empty"><span>✅</span><p>目前没有等待审批的申请</p></div>
+    {% endfor %}
+  </div>
+
+  <div class="admin-section-head approved-head"><div><h2>正式用户</h2><p>密码重置会立即使该用户的旧登录失效</p></div><span class="admin-count approved">{{ approved_users|length }}</span></div>
+  <div class="admin-user-list" id="approvedUsers">
+    {% for user in approved_users %}
+    <article class="admin-user-card approved" data-user-id="{{ user.id }}">
+      <div class="admin-user-avatar">👤</div>
+      <div class="admin-user-main"><h3>{{ user.username }}</h3><p>注册于 {{ user.created_at.strftime('%Y-%m-%d %H:%M') }} · {% if user.last_seen_at %}最近活动 {{ user.last_seen_at.strftime('%Y-%m-%d %H:%M') }}{% else %}暂无活动{% endif %}</p><span class="admin-status approved">正式用户</span></div>
+      <div class="admin-user-actions"><button data-admin-action="reset" data-user-id="{{ user.id }}" data-username="{{ user.username }}">重置密码</button><button class="danger" data-admin-action="delete" data-user-id="{{ user.id }}" data-username="{{ user.username }}">删除</button></div>
+    </article>
+    {% else %}
+    <div class="admin-empty"><span>👥</span><p>还没有正式用户</p></div>
+    {% endfor %}
+  </div>
+</section>
+
+<dialog id="temporaryPasswordDialog" class="password-dialog">
+  <div class="password-dialog-icon">🔐</div><h3>临时密码已生成</h3><p><strong id="passwordUsername"></strong> 的旧登录已失效。此密码关闭后不会再次显示。</p>
+  <div class="temporary-password"><code id="temporaryPassword"></code><button id="copyTemporaryPassword" type="button">复制</button></div>
+  <form method="dialog"><button class="primary wide" value="close">我已保存，关闭</button></form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='admin.js', v='20260721-admin1') }}"></script>{% endblock %}

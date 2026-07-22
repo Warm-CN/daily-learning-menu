@@ -3,20 +3,22 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import click
-from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect, FlaskForm
-from sqlalchemy import UniqueConstraint, event, func, or_
+from sqlalchemy import UniqueConstraint, event, func, inspect, or_, text
 from sqlalchemy.engine import Engine
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -68,12 +70,19 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     last_seen_at = db.Column(db.DateTime)
+    logged_out_at = db.Column(db.DateTime)
+    is_approved = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
+    is_admin = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
+    auth_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password, method="scrypt")
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
+
+    def get_id(self) -> str:
+        return f"{self.id}:{self.auth_version}"
 
 
 class Friendship(db.Model):
@@ -161,8 +170,17 @@ class RegisterForm(LoginForm):
 
 
 @login_manager.user_loader
-def load_user(user_id):
-    return db.session.get(User, int(user_id))
+def load_user(identifier):
+    try:
+        raw_id, raw_version = str(identifier).split(":", 1) if ":" in str(identifier) else (identifier, None)
+        user = db.session.get(User, int(raw_id))
+        if not user or (not user.is_approved and not user.is_admin):
+            return None
+        if raw_version is None:
+            return user if user.auth_version == 0 else None
+        return user if user.auth_version == int(raw_version) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def api_ok(data=None, status=200):
@@ -175,6 +193,47 @@ def api_error(message, status=400, code=None):
 
 def parse_json_body():
     return request.get_json(silent=True) or {}
+
+
+def initialize_database():
+    """Create new tables and upgrade the legacy user table in place."""
+    db.create_all()
+    columns = {column["name"] for column in inspect(db.engine).get_columns("user")}
+    statements = []
+    approval_added = "is_approved" not in columns
+    if approval_added:
+        statements.append("ALTER TABLE user ADD COLUMN is_approved BOOLEAN NOT NULL DEFAULT 0")
+    if "is_admin" not in columns:
+        statements.append("ALTER TABLE user ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0")
+    if "auth_version" not in columns:
+        statements.append("ALTER TABLE user ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0")
+    if "logged_out_at" not in columns:
+        statements.append("ALTER TABLE user ADD COLUMN logged_out_at DATETIME")
+    if statements:
+        with db.engine.begin() as connection:
+            for statement in statements:
+                connection.execute(text(statement))
+            if approval_added:
+                connection.execute(text("UPDATE user SET is_approved = 1"))
+        db.session.expire_all()
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if not current_user.is_admin:
+            if request.path.startswith("/api/"):
+                return api_error("需要管理员权限", 403, "admin_required")
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def generate_temporary_password(length=20):
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def project_dict(project: Project):
@@ -191,8 +250,10 @@ def get_project(user_id, external_id):
 
 
 def create_defaults(user_id):
+    existing = set(db.session.scalars(db.select(Project.external_id).where(Project.user_id == user_id)))
     for external_id, name, color, icon in DEFAULT_PROJECTS:
-        db.session.add(Project(user_id=user_id, external_id=external_id, name=name, color=color, icon=icon))
+        if external_id not in existing:
+            db.session.add(Project(user_id=user_id, external_id=external_id, name=name, color=color, icon=icon))
 
 
 def friend_ids(user_id):
@@ -464,6 +525,18 @@ def create_app(test_config=None):
     limiter.init_app(app)
     login_manager.login_view = "login"
 
+    @app.before_request
+    def keep_admin_out_of_member_features():
+        if not current_user.is_authenticated or not current_user.is_admin:
+            return None
+        endpoint = request.endpoint or ""
+        allowed = endpoint in {"admin_page", "logout", "static", "health"} or endpoint.startswith("admin_")
+        if allowed:
+            return None
+        if request.path.startswith("/api/"):
+            return api_error("管理员账号不能使用学习功能", 403, "admin_only")
+        return redirect(url_for("admin_page"))
+
     @login_manager.unauthorized_handler
     def unauthorized():
         if request.path.startswith("/api/"):
@@ -479,48 +552,55 @@ def create_app(test_config=None):
     @limiter.limit("5 per hour")
     def register():
         if current_user.is_authenticated:
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("admin_page" if current_user.is_admin else "dashboard"))
         form = RegisterForm()
         if form.validate_on_submit():
             username = form.username.data.strip()
-            user = User(username=username, username_key=username.casefold(), last_seen_at=utcnow())
+            user = User(username=username, username_key=username.casefold(), last_seen_at=None,
+                        is_approved=False, is_admin=False, auth_version=0)
             user.set_password(form.password.data)
             db.session.add(user)
-            db.session.flush()
-            create_defaults(user.id)
             db.session.commit()
-            login_user(user, remember=True, duration=timedelta(days=30))
-            return redirect(url_for("dashboard"))
+            app.logger.info("new user pending approval: user_id=%s username=%s", user.id, user.username)
+            return redirect(url_for("login", registered="pending"))
         return render_template("register.html", form=form)
 
     @app.route("/login", methods=["GET", "POST"])
     @limiter.limit("10 per minute")
     def login():
         if current_user.is_authenticated:
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("admin_page" if current_user.is_admin else "dashboard"))
         form = LoginForm()
         error = None
+        notice = "注册成功，账号正在等待管理员审批。" if request.args.get("registered") == "pending" else None
         if form.validate_on_submit():
             user = db.session.scalar(db.select(User).where(User.username_key == form.username.data.strip().casefold()))
             if user and user.check_password(form.password.data):
+                if not user.is_approved and not user.is_admin:
+                    return render_template("login.html", form=form, error="账号正在等待管理员审批", notice=notice)
                 user.last_seen_at = utcnow()
+                user.logged_out_at = None
                 db.session.commit()
                 login_user(user, remember=form.remember.data, duration=timedelta(days=30))
-                return redirect(url_for("dashboard"))
+                return redirect(url_for("admin_page" if user.is_admin else "dashboard"))
             error = "用户名或密码不正确"
-        return render_template("login.html", form=form, error=error)
+        return render_template("login.html", form=form, error=error, notice=notice)
 
     @app.post("/logout")
     @login_required
     def logout():
-        current_user.last_seen_at = None
+        now = utcnow()
+        current_user.last_seen_at = now
+        current_user.logged_out_at = now
         db.session.commit()
         logout_user()
         return redirect(url_for("login"))
 
     @app.get("/")
     def index():
-        return redirect(url_for("dashboard" if current_user.is_authenticated else "login"))
+        if not current_user.is_authenticated:
+            return redirect(url_for("login"))
+        return redirect(url_for("admin_page" if current_user.is_admin else "dashboard"))
 
     @app.get("/dashboard")
     @login_required
@@ -532,9 +612,80 @@ def create_app(test_config=None):
     def friends_page():
         return render_template("friends.html")
 
+    register_admin_routes(app)
     register_api_routes(app)
     register_cli(app)
     return app
+
+
+def register_admin_routes(app):
+    @app.get("/admin")
+    @admin_required
+    def admin_page():
+        pending_users = list(db.session.scalars(db.select(User).where(
+            User.is_admin.is_(False), User.is_approved.is_(False)).order_by(User.created_at.asc())))
+        approved_users = list(db.session.scalars(db.select(User).where(
+            User.is_admin.is_(False), User.is_approved.is_(True)).order_by(User.created_at.desc())))
+        response = make_response(render_template("admin.html", pending_users=pending_users,
+            approved_users=approved_users))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    def managed_user(user_id):
+        user = db.session.get(User, user_id)
+        if not user:
+            return None, api_error("用户不存在", 404, "not_found")
+        if user.is_admin:
+            return None, api_error("不能操作管理员账号", 403, "admin_protected")
+        return user, None
+
+    @app.post("/api/admin/users/<int:user_id>/approve")
+    @admin_required
+    def admin_approve_user(user_id):
+        user, error = managed_user(user_id)
+        if error:
+            return error
+        if not user.is_approved:
+            user.is_approved = True
+            create_defaults(user.id)
+            db.session.commit()
+            app.logger.info("admin approved user: admin_id=%s user_id=%s username=%s",
+                current_user.id, user.id, user.username)
+        return api_ok({"id": user.id, "username": user.username, "approved": True})
+
+    @app.post("/api/admin/users/<int:user_id>/reset-password")
+    @limiter.limit("20 per hour")
+    @admin_required
+    def admin_reset_password(user_id):
+        user, error = managed_user(user_id)
+        if error:
+            return error
+        if not user.is_approved:
+            return api_error("只能重置正式用户的密码", 409, "pending_user")
+        temporary_password = generate_temporary_password()
+        user.set_password(temporary_password)
+        user.auth_version += 1
+        user.last_seen_at = None
+        db.session.commit()
+        app.logger.info("admin reset user password: admin_id=%s user_id=%s username=%s",
+            current_user.id, user.id, user.username)
+        response = jsonify({"ok": True, "data": {"id": user.id, "username": user.username,
+            "temporaryPassword": temporary_password}})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.delete("/api/admin/users/<int:user_id>")
+    @admin_required
+    def admin_delete_user(user_id):
+        user, error = managed_user(user_id)
+        if error:
+            return error
+        username = user.username
+        db.session.delete(user)
+        db.session.commit()
+        app.logger.info("admin deleted user: admin_id=%s user_id=%s username=%s",
+            current_user.id, user_id, username)
+        return api_ok(None)
 
 
 def register_api_routes(app):
@@ -723,14 +874,16 @@ def register_api_routes(app):
         query = request.args.get("q", "").strip().casefold()
         if len(query) < 1: return api_ok([])
         existing = set(friend_ids(current_user.id)) | {current_user.id}
-        users = db.session.scalars(db.select(User).where(User.username_key.contains(query)).limit(10))
+        users = db.session.scalars(db.select(User).where(User.username_key.contains(query),
+            User.is_approved.is_(True), User.is_admin.is_(False)).limit(10))
         return api_ok([{"id": u.id, "username": u.username} for u in users if u.id not in existing])
 
     @app.post("/api/friends/add")
     @login_required
     def friend_add():
         username = str(parse_json_body().get("username") or "").strip()
-        other = db.session.scalar(db.select(User).where(User.username_key == username.casefold()))
+        other = db.session.scalar(db.select(User).where(User.username_key == username.casefold(),
+            User.is_approved.is_(True), User.is_admin.is_(False)))
         if not other: return api_error("用户不存在", 404)
         if other.id == current_user.id: return api_error("不能添加自己")
         low, high = sorted((current_user.id, other.id))
@@ -752,14 +905,18 @@ def register_api_routes(app):
     @login_required
     def friend_status():
         ids = friend_ids(current_user.id)
-        users = db.session.scalars(db.select(User).where(User.id.in_(ids))).all() if ids else []
+        users = db.session.scalars(db.select(User).where(User.id.in_(ids), User.is_approved.is_(True),
+            User.is_admin.is_(False))).all() if ids else []
         today = datetime.now(APP_TZ).date(); cutoff = utcnow() - timedelta(seconds=60); result = []
         for user in users:
             timer = refresh_timer(user.id)
             total = db.session.scalar(db.select(func.coalesce(func.sum(DailyStudy.seconds), 0)).where(
                 DailyStudy.user_id == user.id, DailyStudy.study_date == today)) or 0
-            online = bool(user.last_seen_at and user.last_seen_at >= cutoff)
+            online = bool(user.last_seen_at and user.last_seen_at >= cutoff and
+                          (not user.logged_out_at or user.last_seen_at > user.logged_out_at))
             result.append({"id": user.id, "username": user.username, "online": online,
+                           "lastSeenAt": as_utc(user.last_seen_at).isoformat().replace("+00:00", "Z")
+                               if user.last_seen_at else None,
                            "todaySeconds": int(total), "timer": serialize_timer(timer) if online else None})
         db.session.commit()
         return api_ok(result)
@@ -808,7 +965,26 @@ def register_api_routes(app):
 def register_cli(app):
     @app.cli.command("init-db")
     def init_db():
-        db.create_all(); click.echo("数据库已初始化")
+        initialize_database(); click.echo("数据库已初始化并完成结构升级")
+
+    @app.cli.command("create-admin")
+    @click.option("--username", default="admin", show_default=True)
+    @click.password_option(confirmation_prompt=True)
+    def create_admin(username, password):
+        initialize_database()
+        username = username.strip()
+        if not USERNAME_RE.fullmatch(username):
+            raise click.ClickException("管理员用户名格式无效")
+        if db.session.scalar(db.select(User).where(User.username_key == username.casefold())):
+            raise click.ClickException("用户名已存在")
+        if len(password) < 12:
+            raise click.ClickException("管理员密码至少 12 位")
+        user = User(username=username, username_key=username.casefold(), is_approved=True,
+                    is_admin=True, auth_version=0, last_seen_at=None)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"管理员已创建：{username}")
 
     @app.cli.command("reset-password")
     @click.argument("username")
@@ -817,7 +993,8 @@ def register_cli(app):
         user = db.session.scalar(db.select(User).where(User.username_key == username.casefold()))
         if not user: raise click.ClickException("用户不存在")
         if len(password) < 8: raise click.ClickException("密码至少 8 位")
-        user.set_password(password); db.session.commit(); click.echo("密码已重置")
+        user.set_password(password); user.auth_version += 1; user.last_seen_at = None
+        db.session.commit(); click.echo("密码已重置，旧登录会话已失效")
 
 
 app = create_app()

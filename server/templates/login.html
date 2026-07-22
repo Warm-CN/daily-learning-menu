@@ -1,7 +1,8 @@
 {% extends 'base.html' %}{% block title %}登录 · 考研看板{% endblock %}
-{% block content %}<section class="auth-card"><h1>🍅 登录考研看板</h1><p class="muted">学习记录和计时状态会跟随账号同步</p>
+{% block content %}<section class="auth-card"><div class="auth-brand"><span>🍅</span></div><p class="auth-kicker">WELCOME BACK</p><h1>登录考研看板</h1><p class="muted auth-subtitle">学习记录和计时状态会跟随账号同步</p>
+{% if notice %}<div class="form-notice">{{ notice }}</div>{% endif %}
 {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
 <form method="post">{{ form.hidden_tag() }}<label>{{ form.username.label }}{{ form.username(autocomplete='username') }}</label>
 <label>{{ form.password.label }}{{ form.password(autocomplete='current-password') }}</label>
 <label class="check">{{ form.remember() }} {{ form.remember.label.text }}</label>{{ form.submit(class_='primary wide') }}</form>
-<p>还没有账号？<a href="{{ url_for('register') }}">立即注册</a></p></section>{% endblock %}
+<p class="auth-switch">还没有账号？<a href="{{ url_for('register') }}">立即注册</a></p></section>{% endblock %}

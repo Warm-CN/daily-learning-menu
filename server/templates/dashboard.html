@@ -1,25 +1,33 @@
 {% extends 'base.html' %}{% block title %}学习看板{% endblock %}
 {% block head %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>{% endblock %}
 {% block content %}
-<div class="view-tabs"><button class="active" data-view="home">首页</button><button data-view="timer">计时</button><button data-view="stats">统计</button><button data-view="calendar">日历</button></div>
-<section id="view-home" class="view active"><div id="todayCards" class="stat-grid"></div>
-  <div class="card"><h3>⚡ 今日精力评分</h3><div class="inline"><input id="energy" type="range" min="0" max="100"><strong id="energyValue">0</strong></div></div>
-  <div class="card"><h3>📝 今日学习记录</h3><textarea id="notes" rows="4" placeholder="记录今天的学习内容、收获和反思"></textarea><button id="saveNotes">保存</button></div>
+<div class="view-tabs" role="tablist" aria-label="看板视图"><button class="active" data-view="home">首页</button><button data-view="timer">计时</button><button data-view="stats">统计</button><button data-view="calendar">日历</button></div>
+<section id="view-home" class="view active">
+  <div class="home-intro"><div id="homeDate" class="home-date"></div><div class="home-quote">“每一次专注，都在缩短你与目标的距离。”<span>FOCUS MAKES PROGRESS VISIBLE</span></div></div>
+  <div id="todayCards" class="stats-row"></div>
+  <div class="card"><div class="card-title">⚡ 今日精力评分</div><div class="energy-control"><input id="energy" type="range" min="0" max="100"><strong id="energyValue" class="energy-score">0</strong></div></div>
+  <div class="card"><div class="card-title">📝 今日学习记录</div><textarea id="notes" class="notes-area" rows="4" placeholder="记录今天的学习内容、收获和反思"></textarea><div class="card-actions"><button id="saveNotes" class="primary">保存记录</button></div></div>
 </section>
 <section id="view-timer" class="view"><div class="card timer-card">
-  <div class="inline center"><button id="countupMode" class="mode active">正向计时</button><button id="countdownMode" class="mode">倒计时</button></div>
-  <div id="projectPicker" class="project-picker"></div><button id="manageProjects">⚙ 管理项目</button>
-  <div id="timerProject" class="muted center-text"></div><div id="timerDisplay" class="timer-display">00:00:00</div>
-  <div id="durationRow" class="inline center"><input id="durationMinutes" type="number" min="1" max="1440" value="25"><span>分钟</span></div>
-  <div class="inline center"><button id="startTimer" class="primary">开始</button><button id="pauseTimer" hidden>暂停</button><button id="stopTimer" class="danger" hidden>停止并保存</button><button id="resetTimer">重置</button></div>
- </div></section>
-<section id="view-stats" class="view"><div id="overviewCards" class="stat-grid"></div><div class="chart-grid"><div class="card"><h3>近 7 天学习时长</h3><canvas id="weekChart"></canvas></div><div class="card"><h3>项目分布</h3><canvas id="pieChart"></canvas></div></div>
- <div class="card"><h3>手动补录</h3><div class="inline wrap"><input id="editDate" type="date"><div id="editDurations" class="inline wrap"></div><button id="saveDay">保存</button></div></div>
- <div class="inline wrap"><a class="button-link" href="/api/data/export">导出备份</a><label class="button-link">导入备份<input id="importFile" type="file" accept=".json,application/json" hidden></label><button id="restoreBackup">恢复导入前数据</button></div>
+  <div class="mode-wrap"><div class="mode-btns"><button id="countupMode" class="mode active">📈 正向计时</button><button id="countdownMode" class="mode">⏳ 倒计时</button></div></div>
+  <div id="projectPicker" class="project-picker"></div><button id="manageProjects" class="manage-projects">⚙ 管理项目</button>
+  <div id="timerProject" class="timer-mode-label"></div><div id="timerDisplay" class="timer-display">00:00:00</div>
+  <div id="durationRow" class="duration-row"><input id="durationMinutes" type="number" min="1" max="1440" value="25"><span>分钟</span></div>
+  <div class="timer-actions"><button id="startTimer" class="primary btn-go">▶ 开始</button><button id="pauseTimer" class="btn-pause" hidden>⏸ 暂停</button><button id="stopTimer" class="danger" hidden>⏹ 停止并保存</button><button id="resetTimer">↺ 重置</button></div>
+ </div>
+ <div class="card timer-today-card">
+   <div class="timer-today-head"><div><div class="card-title">📊 今日学习情况</div><p>按项目查看今日已完成与正在进行的学习时长</p></div><div class="timer-today-total"><span>今日合计</span><strong id="timerTodayTotal">0h</strong></div></div>
+   <div class="chart-wrap today-chart-wrap"><canvas id="todayChart"></canvas></div>
+ </div>
 </section>
-<section id="view-calendar" class="view"><div class="card"><div class="calendar-head"><button id="prevMonth">◀</button><h3 id="monthLabel"></h3><button id="nextMonth">▶</button></div><div id="calendar" class="calendar"></div></div></section>
+<section id="view-stats" class="view"><div id="overviewCards" class="stats-row"></div><div class="chart-grid"><div class="card"><div class="card-title">📊 近 7 天学习时长</div><div class="chart-wrap"><canvas id="weekChart"></canvas></div></div><div class="card"><div class="card-title">🎯 项目分布</div><div class="chart-wrap"><canvas id="pieChart"></canvas></div></div></div>
+ <div class="card"><div class="card-title">✏️ 手动补录 · 单位：小时</div><div class="inline wrap"><input id="editDate" type="date"><div id="editDurations" class="inline wrap edit-durations"></div><button id="saveDay" class="primary">保存</button></div></div>
+ <div class="data-actions"><a class="button-link" href="/api/data/export">导出备份</a><label class="button-link">导入备份<input id="importFile" type="file" accept=".json,application/json" hidden></label><button id="restoreBackup">恢复导入前数据</button></div>
+</section>
+<section id="view-calendar" class="view"><div class="card"><div class="calendar-head"><button id="prevMonth" aria-label="上个月">◀</button><h3 id="monthLabel"></h3><button id="nextMonth" aria-label="下个月">▶</button></div><div id="calendar" class="calendar"></div><div class="heat-legend" aria-label="学习时长颜色图例"><span>学习时长</span><em>少</em><i style="--heat:.12"></i><i style="--heat:.28"></i><i style="--heat:.45"></i><i style="--heat:.63"></i><i style="--heat:.82"></i><em>多</em></div></div></section>
 
-<dialog id="projectDialog"><form method="dialog"><div class="dialog-head"><h3>管理项目</h3><button value="cancel">×</button></div></form><div id="projectRows"></div>
- <div class="inline wrap"><input id="newIcon" value="📚" maxlength="4" class="icon-input"><input id="newName" placeholder="新项目名称" maxlength="20"><input id="newColor" type="color" value="#4f8cf7"><button id="addProject">添加</button></div></dialog>
+<dialog id="projectDialog"><form method="dialog"><div class="dialog-head"><div><h3>管理项目</h3><p class="muted">自定义科目名称、图标与颜色</p></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div></form><div id="projectRows"></div>
+ <div class="inline wrap project-add"><input id="newIcon" value="📚" maxlength="4" class="icon-input"><input id="newName" placeholder="新项目名称" maxlength="20"><input id="newColor" type="color" value="#4f8cf7"><button id="addProject" class="primary">添加</button></div></dialog>
+<div class="foot-bar"><span>今日：<strong id="footToday">0h</strong></span><span>本周：<strong id="footWeek">0h</strong></span></div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='dashboard.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='dashboard.js', v='20260721-ui4') }}"></script>{% endblock %}

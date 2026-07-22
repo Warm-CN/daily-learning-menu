@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% block title %}注册 · 考研看板{% endblock %}
-{% block content %}<section class="auth-card"><h1>创建账号</h1><p class="muted">用户名支持中文、字母、数字、下划线和短横线</p>
+{% block content %}<section class="auth-card"><div class="auth-brand"><span>🍅</span></div><p class="auth-kicker">START TODAY</p><h1>申请账号</h1><p class="muted auth-subtitle">注册后需等待管理员审批，通过后即可开始学习</p>
 <form method="post">{{ form.hidden_tag() }}<label>{{ form.username.label }}{{ form.username(autocomplete='username') }}</label>
 {% for error in form.username.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
 <label>{{ form.password.label }}{{ form.password(autocomplete='new-password') }}</label>
 {% for error in form.password.errors %}<div class="form-error">{{ error }}</div>{% endfor %}{{ form.submit(value='注册', class_='primary wide') }}</form>
-<p>已有账号？<a href="{{ url_for('login') }}">返回登录</a></p></section>{% endblock %}
+<p class="auth-switch">已有账号？<a href="{{ url_for('login') }}">返回登录</a></p></section>{% endblock %}

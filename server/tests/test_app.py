@@ -35,9 +35,25 @@ def test_direct_friendship_and_status(app):
         bob_user = db.session.scalar(db.select(User).where(User.username_key == "bob"))
         bob_user.last_seen_at = utcnow() - timedelta(seconds=61)
         db.session.commit()
-    assert payload(alice.get("/api/friends/status"))[0]["online"] is False
+    offline = payload(alice.get("/api/friends/status"))[0]
+    assert offline["online"] is False
+    assert offline["lastSeenAt"].endswith("Z")
     assert alice.delete(f"/api/friends/{alice_view[0]['id']}").status_code == 200
     assert payload(alice.get("/api/friends/status")) == []
+
+
+def test_logout_is_immediately_offline_and_preserves_last_seen(app):
+    alice = app.test_client(); bob = app.test_client()
+    register(alice, "logout_watcher"); register(bob, "logout_friend")
+    alice.post("/api/friends/add", json={"username": "logout_friend"})
+    assert payload(alice.get("/api/friends/status"))[0]["online"] is True
+    assert bob.post("/logout").status_code == 302
+    friend = payload(alice.get("/api/friends/status"))[0]
+    assert friend["online"] is False
+    assert friend["lastSeenAt"].endswith("Z")
+    with app.app_context():
+        user = db.session.scalar(db.select(User).where(User.username_key == "logout_friend"))
+        assert user.last_seen_at == user.logged_out_at
 
 
 def test_timer_version_pause_resume_and_idempotent_stop(app, client):

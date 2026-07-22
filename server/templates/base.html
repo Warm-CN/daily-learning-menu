@@ -5,23 +5,29 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}考研看板{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='server.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='server.css', v='20260721-ui5') }}">
     {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% if current_user.is_authenticated %}app-body{% else %}auth-body{% endif %}">
 {% if current_user.is_authenticated %}
 <header class="topbar">
-    <a class="brand" href="{{ url_for('dashboard') }}">🍅 考研看板</a>
-    <nav>
-        <a href="{{ url_for('dashboard') }}">学习看板</a>
-        <a href="{{ url_for('friends_page') }}">好友</a>
-    </nav>
-    <div class="account"><span>{{ current_user.username }}</span>
-        <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-btn">退出</button></form>
+    <div class="topbar-inner">
+        <a class="brand" href="{{ url_for('admin_page') if current_user.is_admin else url_for('dashboard') }}"><span class="brand-mark">🍅</span><span class="brand-text">考研看板</span></a>
+        <nav class="main-nav" aria-label="主导航">
+            {% if current_user.is_admin %}
+            <a class="nav-link active" href="{{ url_for('admin_page') }}">用户管理</a>
+            {% else %}
+            <a class="nav-link{% if request.endpoint == 'dashboard' %} active{% endif %}" href="{{ url_for('dashboard') }}">学习看板</a>
+            <a class="nav-link{% if request.endpoint == 'friends_page' %} active{% endif %}" href="{{ url_for('friends_page') }}">好友</a>
+            {% endif %}
+        </nav>
+        <div class="account"><span class="user-chip">{{ current_user.username }}</span>
+            <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="account-action">退出</button></form>
+        </div>
     </div>
 </header>
 {% endif %}
-<main class="shell">{% block content %}{% endblock %}</main>
+<main class="shell{% if not current_user.is_authenticated %} auth-shell{% endif %}">{% block content %}{% endblock %}</main>
 <div id="toast" class="toast"></div>
 <script>
 const csrfToken=document.querySelector('meta[name="csrf-token"]').content;
@@ -32,7 +38,7 @@ async function apiFetch(url,options={}){
   if(!response.ok||!payload.ok){const error=new Error(payload.error?.message||'请求失败');error.status=response.status;error.code=payload.error?.code;throw error} return payload.data;
 }
 function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2400)}
-{% if current_user.is_authenticated %}
+{% if current_user.is_authenticated and not current_user.is_admin %}
 async function heartbeat(){try{await apiFetch('/api/presence',{method:'POST'})}catch(error){if(error.status===401)location.href='/login'}}
 heartbeat();let presenceTimer=setInterval(heartbeat,20000);document.addEventListener('visibilitychange',()=>{clearInterval(presenceTimer);presenceTimer=setInterval(heartbeat,document.hidden?60000:20000);if(!document.hidden)heartbeat()});
 {% endif %}

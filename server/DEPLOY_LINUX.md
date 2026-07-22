@@ -135,7 +135,10 @@ sudo chmod 600 /opt/kaoyan/server/.env
 
 ```bash
 sudo -u kaoyan bash -c 'cd /opt/kaoyan/server && .venv/bin/flask --app app:app init-db'
+sudo -u kaoyan bash -c 'cd /opt/kaoyan/server && .venv/bin/flask --app app:app create-admin --username admin'
 ```
+
+第二条命令会交互式要求输入并确认管理员密码。不要把密码写在命令行、环境文件或部署日志中。升级旧数据库时，`init-db` 会幂等增加账号审批字段，并将升级前已经存在的账号标记为正式用户；之后新注册的账号默认等待审批。
 
 确认数据库已生成且归属正确：
 
@@ -164,6 +167,8 @@ curl http://127.0.0.1:8010/health
 ```
 
 健康检查应返回包含 `"status":"ok"` 的 JSON。
+
+管理员使用普通登录页登录，成功后会直接进入 `/admin`。管理员账号仅能使用后台，不会出现在好友搜索中，也不能访问学习功能。
 
 Gunicorn 使用一个 worker 和四个线程，这是本项目小规模 SQLite 部署的预期配置；不要擅自增加多个 worker。`8010` 只监听回环地址，不需要也不应该在防火墙中对公网开放。如果该端口已被其他后端占用，同时修改 `.env` 中的 `APP_BIND` 和反向代理目标即可。
 
