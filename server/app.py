@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import secrets
 import uuid
@@ -40,6 +41,19 @@ DEFAULT_PROJECTS = [
     ("politics", "政治", "#b58ddb", "🏛️"),
     ("professional", "专业课", "#f5a623", "📖"),
 ]
+POKEMON_MAX_XP_SECONDS = 50 * 3600
+EEVEE_BRANCH_XP_SECONDS = 30 * 3600
+EEVEE_ID = 133
+EEVEE_EVOLUTIONS = {134, 135, 136}
+POKEMON_BASE_SPECIES = [
+    1, 4, 7, 10, 13, 16, 19, 21, 23, 25, 27, 29, 32, 35, 37, 39, 41, 43, 46, 48, 50, 52,
+    54, 56, 58, 60, 63, 66, 69, 72, 74, 77, 79, 81, 83, 84, 86, 88, 90, 92, 95, 96, 98,
+    100, 102, 104, 106, 107, 108, 109, 111, 113, 114, 115, 116, 118, 120, 122, 123,
+    124, 125, 126, 127, 128, 129, 131, 132, 133, 137, 138, 140, 142, 143, 144, 145,
+    146, 147, 150, 151,
+]
+LEGENDARY_POKEMON = {144, 145, 146, 150, 151}
+LEGENDARY_UNLOCK_COUNT = 30
 
 
 def utcnow() -> datetime:
@@ -74,6 +88,7 @@ class User(UserMixin, db.Model):
     is_approved = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
     is_admin = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
     auth_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    preferred_version = db.Column(db.String(12), nullable=False, default="classic", server_default="classic")
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password, method="scrypt")
@@ -153,6 +168,33 @@ class UserBackup(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
 
+class PokemonProfile(db.Model):
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True)
+    current_pokemon_id = db.Column(db.Integer, nullable=True)
+    unspent_xp_seconds = db.Column(db.Integer, nullable=False, default=0)
+    pending_candidates_json = db.Column(db.Text, nullable=False, default="[]")
+    version = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class OwnedPokemon(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    base_species_id = db.Column(db.Integer, nullable=False)
+    experience_seconds = db.Column(db.Integer, nullable=False, default=0)
+    evolved_species_id = db.Column(db.Integer)
+    graduated = db.Column(db.Boolean, nullable=False, default=False)
+    acquired_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+
+class PokemonReward(db.Model):
+    session_uuid = db.Column(db.String(36), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    awarded_seconds = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+
 class LoginForm(FlaskForm):
     username = StringField("用户名", validators=[DataRequired(), Length(min=3, max=20)])
     password = PasswordField("密码", validators=[DataRequired(), Length(min=8, max=128)])
@@ -191,6 +233,12 @@ def api_error(message, status=400, code=None):
     return jsonify({"ok": False, "error": {"message": message, "code": code}}), status
 
 
+def member_home_endpoint(user):
+    if user.is_admin:
+        return "admin_page"
+    return "pokemon_page" if user.preferred_version == "pokemon" else "dashboard"
+
+
 def parse_json_body():
     return request.get_json(silent=True) or {}
 
@@ -209,6 +257,8 @@ def initialize_database():
         statements.append("ALTER TABLE user ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0")
     if "logged_out_at" not in columns:
         statements.append("ALTER TABLE user ADD COLUMN logged_out_at DATETIME")
+    if "preferred_version" not in columns:
+        statements.append("ALTER TABLE user ADD COLUMN preferred_version VARCHAR(12) NOT NULL DEFAULT 'classic'")
     if statements:
         with db.engine.begin() as connection:
             for statement in statements:
@@ -254,6 +304,124 @@ def create_defaults(user_id):
     for external_id, name, color, icon in DEFAULT_PROJECTS:
         if external_id not in existing:
             db.session.add(Project(user_id=user_id, external_id=external_id, name=name, color=color, icon=icon))
+
+
+def get_or_create_pokemon_profile(user_id):
+    profile = db.session.get(PokemonProfile, user_id)
+    if not profile:
+        profile = PokemonProfile(user_id=user_id)
+        db.session.add(profile)
+        db.session.flush()
+    return profile
+
+
+def get_owned_pokemon(user_id, pokemon_id):
+    if not pokemon_id:
+        return None
+    return db.session.scalar(db.select(OwnedPokemon).where(
+        OwnedPokemon.id == pokemon_id, OwnedPokemon.user_id == user_id))
+
+
+def pokemon_owned_counts(user_id):
+    rows = db.session.execute(db.select(OwnedPokemon.base_species_id, func.count()).where(
+        OwnedPokemon.user_id == user_id).group_by(OwnedPokemon.base_species_id))
+    return {species_id: count for species_id, count in rows}
+
+
+def available_pokemon_species(user_id):
+    counts = pokemon_owned_counts(user_id)
+    graduated = db.session.scalar(db.select(func.count()).select_from(OwnedPokemon).where(
+        OwnedPokemon.user_id == user_id, OwnedPokemon.graduated.is_(True))) or 0
+    return [species_id for species_id in POKEMON_BASE_SPECIES
+            if (species_id not in LEGENDARY_POKEMON or graduated >= LEGENDARY_UNLOCK_COUNT)
+            and counts.get(species_id, 0) < (3 if species_id == EEVEE_ID else 1)]
+
+
+def pending_pokemon_candidates(profile):
+    try:
+        values = json.loads(profile.pending_candidates_json or "[]")
+    except (TypeError, json.JSONDecodeError):
+        values = []
+    return [value for value in values if isinstance(value, int)]
+
+
+def ensure_pokemon_candidates(profile):
+    current = get_owned_pokemon(profile.user_id, profile.current_pokemon_id)
+    if current and not current.graduated:
+        profile.pending_candidates_json = "[]"
+        return []
+    existing = pending_pokemon_candidates(profile)
+    available = set(available_pokemon_species(profile.user_id))
+    valid = [species_id for species_id in existing if species_id in available]
+    if valid:
+        if valid != existing:
+            profile.pending_candidates_json = json.dumps(valid)
+        return valid
+    choices = random.sample(list(available), min(3, len(available))) if available else []
+    profile.pending_candidates_json = json.dumps(choices)
+    return choices
+
+
+def apply_unspent_pokemon_xp(profile):
+    current = get_owned_pokemon(profile.user_id, profile.current_pokemon_id)
+    if not current or current.graduated or profile.unspent_xp_seconds <= 0:
+        return
+    cap = (EEVEE_BRANCH_XP_SECONDS if current.base_species_id == EEVEE_ID
+           and current.evolved_species_id is None else POKEMON_MAX_XP_SECONDS)
+    transfer = min(max(0, cap - current.experience_seconds), profile.unspent_xp_seconds)
+    current.experience_seconds += transfer
+    profile.unspent_xp_seconds -= transfer
+    if current.experience_seconds >= POKEMON_MAX_XP_SECONDS:
+        current.experience_seconds = POKEMON_MAX_XP_SECONDS
+        current.graduated = True
+
+
+def award_pokemon_session(session):
+    if db.session.get(PokemonReward, session.session_uuid):
+        return
+    seconds = max(0, int(session.duration_seconds))
+    profile = get_or_create_pokemon_profile(session.user_id)
+    db.session.add(PokemonReward(session_uuid=session.session_uuid, user_id=session.user_id,
+                                 awarded_seconds=seconds))
+    profile.unspent_xp_seconds += seconds
+    apply_unspent_pokemon_xp(profile)
+
+
+def claim_pokemon_state_version(profile, raw_version):
+    try:
+        expected = int(raw_version)
+    except (TypeError, ValueError):
+        return False
+    if expected != profile.version:
+        return False
+    result = db.session.execute(db.update(PokemonProfile).where(
+        PokemonProfile.user_id == profile.user_id, PokemonProfile.version == expected).values(
+            version=expected + 1).execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        db.session.rollback()
+        return False
+    profile.version = expected + 1
+    return True
+
+
+def pokemon_state_dict(profile, generate_candidates=False):
+    if generate_candidates:
+        ensure_pokemon_candidates(profile)
+    owned = list(db.session.scalars(db.select(OwnedPokemon).where(
+        OwnedPokemon.user_id == profile.user_id).order_by(OwnedPokemon.id)))
+    current = next((item for item in owned if item.id == profile.current_pokemon_id), None)
+    return {
+        "stateVersion": profile.version,
+        "currentPokemonId": current.id if current else None,
+        "unspentXpSeconds": profile.unspent_xp_seconds,
+        "pendingCandidates": pending_pokemon_candidates(profile),
+        "graduatedCount": sum(1 for item in owned if item.graduated),
+        "owned": [{"id": item.id, "baseSpeciesId": item.base_species_id,
+                   "experienceSeconds": item.experience_seconds,
+                   "evolvedSpeciesId": item.evolved_species_id, "graduated": item.graduated,
+                   "acquiredAt": as_utc(item.acquired_at).isoformat().replace("+00:00", "Z")}
+                  for item in owned],
+    }
 
 
 def friend_ids(user_id):
@@ -345,6 +513,7 @@ def finalize_timer(timer: ActiveTimer, end_at=None, forced_seconds=None):
     session = StudySession(session_uuid=timer.session_uuid, user_id=timer.user_id, project_id=timer.project_id,
         started_at=started, ended_at=ended, duration_seconds=seconds)
     db.session.add(session)
+    award_pokemon_session(session)
     db.session.delete(timer)
     return session
 
@@ -413,9 +582,19 @@ def build_bundle(user_id):
             "startedAt": int(as_utc(item.started_at).timestamp() * 1000), "endedAt": int(as_utc(item.ended_at).timestamp() * 1000),
             "durationSec": item.duration_seconds, "durationMin": round(item.duration_seconds / 60),
             "subject": project.external_id if project else None, "energy": item.energy})
-    return {"format": "kaoyan-study-backup", "version": 1, "exportedAt": datetime.now(UTC).isoformat(),
-            "study": study, "sessions": sessions, "milestones": milestones,
-            "projects": [project_dict(item) for item in projects]}
+    bundle = {"format": "kaoyan-study-backup", "version": 1, "exportedAt": datetime.now(UTC).isoformat(),
+              "study": study, "sessions": sessions, "milestones": milestones,
+              "projects": [project_dict(item) for item in projects]}
+    profile = db.session.get(PokemonProfile, user_id)
+    if profile:
+        pokemon = pokemon_state_dict(profile)
+        pokemon["rewards"] = [{"sessionId": item.session_uuid, "seconds": item.awarded_seconds}
+                              for item in db.session.scalars(db.select(PokemonReward).where(
+                                  PokemonReward.user_id == user_id).order_by(PokemonReward.created_at))]
+        bundle["pokemon"] = pokemon
+    user = db.session.get(User, user_id)
+    bundle["preferredVersion"] = user.preferred_version if user else "classic"
+    return bundle
 
 
 def validate_bundle(payload):
@@ -425,6 +604,133 @@ def validate_bundle(payload):
         raise ValueError("备份数据不完整")
     if payload.get("projects") is not None and not isinstance(payload["projects"], list):
         raise ValueError("项目配置无效")
+    if payload.get("pokemon") is not None and not isinstance(payload["pokemon"], dict):
+        raise ValueError("宝可梦存档无效")
+
+
+def replace_pokemon_data(user_id, payload):
+    version = payload.get("preferredVersion")
+    if version in {"classic", "pokemon"}:
+        user = db.session.get(User, user_id)
+        if user:
+            user.preferred_version = version
+    raw = payload.get("pokemon")
+    if raw is None:
+        return
+    db.session.query(PokemonReward).filter_by(user_id=user_id).delete()
+    db.session.query(OwnedPokemon).filter_by(user_id=user_id).delete()
+    db.session.query(PokemonProfile).filter_by(user_id=user_id).delete()
+    db.session.flush()
+    try:
+        state_version = max(1, int(raw.get("stateVersion") or 1))
+    except (TypeError, ValueError):
+        state_version = 1
+    try:
+        unspent_xp = int(raw.get("unspentXpSeconds") or 0)
+    except (TypeError, ValueError):
+        raise ValueError("宝可梦经验数据无效")
+    if unspent_xp < 0:
+        raise ValueError("宝可梦经验数据无效")
+    profile = PokemonProfile(user_id=user_id,
+        unspent_xp_seconds=unspent_xp,
+        pending_candidates_json="[]", version=state_version)
+    db.session.add(profile)
+    db.session.flush()
+    owned_items = raw.get("owned") or []
+    if not isinstance(owned_items, list) or len(owned_items) > 200:
+        raise ValueError("宝可梦持有数据无效")
+    normalized_owned = []
+    ownership_counts = defaultdict(int)
+    seen_old_ids = set()
+    for item in owned_items:
+        if not isinstance(item, dict):
+            raise ValueError("宝可梦持有数据无效")
+        try:
+            old_id = int(item.get("id"))
+            species_id = int(item.get("baseSpeciesId"))
+            experience = int(item.get("experienceSeconds") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("宝可梦持有数据无效")
+        if experience < 0 or experience > POKEMON_MAX_XP_SECONDS:
+            raise ValueError("宝可梦经验数据无效")
+        if old_id in seen_old_ids:
+            raise ValueError("宝可梦编号重复")
+        seen_old_ids.add(old_id)
+        if species_id not in POKEMON_BASE_SPECIES:
+            raise ValueError("宝可梦种类无效")
+        ownership_counts[species_id] += 1
+        if ownership_counts[species_id] > (3 if species_id == EEVEE_ID else 1):
+            raise ValueError("宝可梦持有数量超过限制")
+        evolved = item.get("evolvedSpeciesId")
+        try:
+            evolved = int(evolved) if evolved is not None else None
+        except (TypeError, ValueError):
+            raise ValueError("宝可梦进化数据无效")
+        if evolved is not None and (species_id != EEVEE_ID or evolved not in EEVEE_EVOLUTIONS
+                                    or experience < EEVEE_BRANCH_XP_SECONDS):
+            raise ValueError("宝可梦进化数据无效")
+        normalized_owned.append({"old_id": old_id, "species_id": species_id, "experience": experience,
+                                 "evolved": evolved, "graduated": experience >= POKEMON_MAX_XP_SECONDS})
+    graduated_nonlegendary = sum(1 for item in normalized_owned
+                                  if item["graduated"] and item["species_id"] not in LEGENDARY_POKEMON)
+    if any(item["species_id"] in LEGENDARY_POKEMON for item in normalized_owned) \
+            and graduated_nonlegendary < LEGENDARY_UNLOCK_COUNT:
+        raise ValueError("传说宝可梦尚未解锁")
+    id_map = {}
+    for item in normalized_owned:
+        old_id = item["old_id"]
+        species_id = item["species_id"]
+        owned = OwnedPokemon(user_id=user_id, base_species_id=species_id,
+                             experience_seconds=item["experience"],
+                             evolved_species_id=item["evolved"], graduated=item["graduated"])
+        db.session.add(owned)
+        db.session.flush()
+        id_map[old_id] = owned.id
+    try:
+        profile.current_pokemon_id = id_map.get(int(raw.get("currentPokemonId")))
+    except (TypeError, ValueError):
+        profile.current_pokemon_id = None
+    candidates = raw.get("pendingCandidates") or []
+    if not isinstance(candidates, list) or len(candidates) > 3 or len(candidates) != len(set(candidates)):
+        raise ValueError("宝可梦候选数据无效")
+    available = set(available_pokemon_species(user_id))
+    if any(not isinstance(value, int) or value not in available for value in candidates):
+        raise ValueError("宝可梦候选数据无效")
+    profile.pending_candidates_json = json.dumps(candidates)
+    session_durations = {}
+    for item in payload.get("sessions", []):
+        if not isinstance(item, dict):
+            continue
+        session_id = str(item.get("id") or "")
+        try:
+            seconds = max(0, int(item.get("durationSec") or float(item.get("durationMin") or 0) * 60))
+        except (TypeError, ValueError):
+            continue
+        if session_id and len(session_id) <= 36:
+            session_durations[session_id] = seconds
+    reward_items = raw.get("rewards") or []
+    if not isinstance(reward_items, list) or len(reward_items) > 100000:
+        raise ValueError("宝可梦奖励记录无效")
+    normalized_rewards = []
+    seen_rewards = set()
+    for item in reward_items:
+        if not isinstance(item, dict):
+            raise ValueError("宝可梦奖励记录无效")
+        session_id = str(item.get("sessionId") or "")
+        try:
+            seconds = int(item.get("seconds") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("宝可梦奖励记录无效")
+        if (not session_id or len(session_id) > 36 or session_id in seen_rewards
+                or seconds < 0 or seconds > 86400 or session_durations.get(session_id) != seconds):
+            raise ValueError("宝可梦奖励记录无效")
+        seen_rewards.add(session_id)
+        normalized_rewards.append((session_id, seconds))
+    distributed_xp = unspent_xp + sum(item["experience"] for item in normalized_owned)
+    if distributed_xp != sum(seconds for _session_id, seconds in normalized_rewards):
+        raise ValueError("宝可梦经验与计时奖励不一致")
+    for session_id, seconds in normalized_rewards:
+        db.session.add(PokemonReward(session_uuid=session_id, user_id=user_id, awarded_seconds=seconds))
 
 
 def replace_user_data(user_id, payload):
@@ -496,6 +802,7 @@ def replace_user_data(user_id, payload):
                     float(raw.get("durationMin") or 0) * 60)), energy=int(raw["energy"]) if raw.get("energy") is not None else None))
         except (TypeError, ValueError, OSError):
             continue
+    replace_pokemon_data(user_id, payload)
 
 
 def create_app(test_config=None):
@@ -552,7 +859,7 @@ def create_app(test_config=None):
     @limiter.limit("5 per hour")
     def register():
         if current_user.is_authenticated:
-            return redirect(url_for("admin_page" if current_user.is_admin else "dashboard"))
+            return redirect(url_for(member_home_endpoint(current_user)))
         form = RegisterForm()
         if form.validate_on_submit():
             username = form.username.data.strip()
@@ -569,7 +876,7 @@ def create_app(test_config=None):
     @limiter.limit("10 per minute")
     def login():
         if current_user.is_authenticated:
-            return redirect(url_for("admin_page" if current_user.is_admin else "dashboard"))
+            return redirect(url_for(member_home_endpoint(current_user)))
         form = LoginForm()
         error = None
         notice = "注册成功，账号正在等待管理员审批。" if request.args.get("registered") == "pending" else None
@@ -582,7 +889,7 @@ def create_app(test_config=None):
                 user.logged_out_at = None
                 db.session.commit()
                 login_user(user, remember=form.remember.data, duration=timedelta(days=30))
-                return redirect(url_for("admin_page" if user.is_admin else "dashboard"))
+                return redirect(url_for(member_home_endpoint(user)))
             error = "用户名或密码不正确"
         return render_template("login.html", form=form, error=error, notice=notice)
 
@@ -600,12 +907,17 @@ def create_app(test_config=None):
     def index():
         if not current_user.is_authenticated:
             return redirect(url_for("login"))
-        return redirect(url_for("admin_page" if current_user.is_admin else "dashboard"))
+        return redirect(url_for(member_home_endpoint(current_user)))
 
     @app.get("/dashboard")
     @login_required
     def dashboard():
-        return render_template("dashboard.html")
+        return render_template("dashboard.html", pokemon_mode=False)
+
+    @app.get("/pokemon")
+    @login_required
+    def pokemon_page():
+        return render_template("dashboard.html", pokemon_mode=True)
 
     @app.get("/friends")
     @login_required
@@ -698,6 +1010,75 @@ def register_api_routes(app):
         bundle["timer"] = serialize_timer(timer)
         bundle["user"] = {"id": current_user.id, "username": current_user.username}
         return api_ok(bundle)
+
+    @app.patch("/api/preferences/version")
+    @login_required
+    def preferred_version():
+        version = parse_json_body().get("version")
+        if version not in {"classic", "pokemon"}:
+            return api_error("版本无效")
+        current_user.preferred_version = version
+        db.session.commit()
+        return api_ok({"version": version, "url": url_for("pokemon_page" if version == "pokemon" else "dashboard")})
+
+    @app.post("/api/pokemon/bootstrap")
+    @login_required
+    def pokemon_bootstrap():
+        profile = get_or_create_pokemon_profile(current_user.id)
+        apply_unspent_pokemon_xp(profile)
+        data = pokemon_state_dict(profile, generate_candidates=True)
+        db.session.commit()
+        return api_ok(data)
+
+    @app.post("/api/pokemon/claim")
+    @login_required
+    def pokemon_claim():
+        body = parse_json_body()
+        profile = get_or_create_pokemon_profile(current_user.id)
+        current = get_owned_pokemon(current_user.id, profile.current_pokemon_id)
+        if current and not current.graduated:
+            return api_error("当前伙伴尚未毕业", 409, "pokemon_active")
+        try:
+            species_id = int(body.get("baseSpeciesId"))
+        except (TypeError, ValueError):
+            return api_error("请选择有效的宝可梦")
+        candidates = ensure_pokemon_candidates(profile)
+        if species_id not in candidates or species_id not in available_pokemon_species(current_user.id):
+            return api_error("该宝可梦不在本次候选中", 409, "invalid_candidate")
+        if not claim_pokemon_state_version(profile, body.get("stateVersion")):
+            return api_error("养成状态已在其他设备更新", 409, "stale_pokemon")
+        owned = OwnedPokemon(user_id=current_user.id, base_species_id=species_id)
+        db.session.add(owned)
+        db.session.flush()
+        profile.current_pokemon_id = owned.id
+        profile.pending_candidates_json = "[]"
+        apply_unspent_pokemon_xp(profile)
+        data = pokemon_state_dict(profile, generate_candidates=True)
+        db.session.commit()
+        return api_ok(data, 201)
+
+    @app.post("/api/pokemon/evolve")
+    @login_required
+    def pokemon_evolve():
+        body = parse_json_body()
+        try:
+            pokemon_id = int(body.get("pokemonId"))
+            target_id = int(body.get("targetSpeciesId"))
+        except (TypeError, ValueError):
+            return api_error("进化选择无效")
+        profile = get_or_create_pokemon_profile(current_user.id)
+        owned = get_owned_pokemon(current_user.id, pokemon_id)
+        if (not owned or profile.current_pokemon_id != owned.id or owned.base_species_id != EEVEE_ID
+                or owned.evolved_species_id is not None or owned.experience_seconds < EEVEE_BRANCH_XP_SECONDS
+                or target_id not in EEVEE_EVOLUTIONS):
+            return api_error("当前宝可梦不能进行该进化", 409, "invalid_evolution")
+        if not claim_pokemon_state_version(profile, body.get("stateVersion")):
+            return api_error("养成状态已在其他设备更新", 409, "stale_pokemon")
+        owned.evolved_species_id = target_id
+        apply_unspent_pokemon_xp(profile)
+        data = pokemon_state_dict(profile, generate_candidates=True)
+        db.session.commit()
+        return api_ok(data)
 
     @app.post("/api/presence")
     @login_required

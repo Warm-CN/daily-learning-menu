@@ -22,6 +22,7 @@ async function loadData(){
     else if(!projectExists(selectedProject))selectedProject=projectExists(storedProject)?storedProject:projects[0]?.id;
     if(selectedProject)writeStorage(localStorage,PROJECT_STORAGE_KEY,selectedProject);
     renderAll();
+    if(window.pokemonDashboardRefresh)await window.pokemonDashboardRefresh();
     const storedView=readStorage(sessionStorage,VIEW_STORAGE_KEY);
     const initialView=state.timer?'timer':['home','timer','stats','calendar'].includes(storedView)?storedView:'home';
     switchView(initialView);
@@ -61,10 +62,11 @@ function renderTodayChart(){
 function renderStats(){
     const allDays=Object.entries(state.study).filter(([key])=>/^\d{4}-\d{2}-\d{2}$/.test(key));
     const total=allDays.reduce((sum,[,day])=>sum+dayTotal(day),0);
-    $('overviewCards').innerHTML=`<div class="stat-card" style="--color:#ff6b5e"><strong>${allDays.filter(([,day])=>dayTotal(day)>0).length}</strong><span>累计学习天数</span></div><div class="stat-card" style="--color:#4f8cf7"><strong>${formatHours(total)}</strong><span>累计学习时长</span></div>`+state.projects.map(project=>`<div class="stat-card" style="--color:${project.color}"><strong>${formatHours(allDays.reduce((sum,[,day])=>sum+(day[project.id]||0),0))}</strong><span>${escapeHtml(project.name)}</span></div>`).join('');
+    const visibleProjects=activeProjects();
+    $('overviewCards').innerHTML=`<div class="stat-card" style="--color:#ff6b5e"><strong>${allDays.filter(([,day])=>dayTotal(day)>0).length}</strong><span>累计学习天数</span></div><div class="stat-card" style="--color:#4f8cf7"><strong>${formatHours(total)}</strong><span>累计学习时长</span></div>`+visibleProjects.map(project=>`<div class="stat-card" style="--color:${project.color}"><strong>${formatHours(allDays.reduce((sum,[,day])=>sum+(day[project.id]||0),0))}</strong><span>${escapeHtml(project.name)}</span></div>`).join('');
     const days=[];
     for(let offset=6;offset>=0;offset--){const day=new Date();day.setDate(day.getDate()-offset);days.push(chinaDate(day))}
-    const datasets=state.projects.map(project=>({
+    const datasets=visibleProjects.map(project=>({
         label:project.name,
         data:days.map(key=>Math.round((state.study[key]?.[project.id]||0)/360)/10),
         backgroundColor:project.color,
@@ -86,16 +88,16 @@ function renderStats(){
                 },
             },
         });
-        const totals=state.projects.map(project=>Math.round(allDays.reduce((sum,[,day])=>sum+(day[project.id]||0),0)/360)/10);
+        const totals=visibleProjects.map(project=>Math.round(allDays.reduce((sum,[,day])=>sum+(day[project.id]||0),0)/360)/10);
         const hasPieData=totals.some(Boolean);
         pieChart?.destroy();
         pieChart=new Chart($('pieChart'),{
             type:'doughnut',
             data:{
-                labels:state.projects.map(project=>project.name),
+                labels:visibleProjects.map(project=>project.name),
                 datasets:[{
                     data:hasPieData?totals:totals.map(()=>1),
-                    backgroundColor:hasPieData?state.projects.map(project=>project.color):state.projects.map(()=>'#e5e7eb'),
+                    backgroundColor:hasPieData?visibleProjects.map(project=>project.color):visibleProjects.map(()=>'#e5e7eb'),
                 }],
             },
             options:{
@@ -111,7 +113,7 @@ function renderStats(){
     $('editDate').value=$('editDate').value||chinaDate();
     renderEditDurations();
 }
-function renderEditDurations(){const day=state.study[$('editDate').value]||{};$('editDurations').innerHTML=state.projects.map(p=>`<label>${escapeHtml(p.icon)} ${escapeHtml(p.name)}<input class="duration-input" data-id="${p.id}" type="number" min="0" max="24" step="0.1" value="${Math.round((day[p.id]||0)/360)/10}"> 小时</label>`).join('')}
+function renderEditDurations(){const day=state.study[$('editDate').value]||{};$('editDurations').innerHTML=activeProjects().map(p=>`<label>${escapeHtml(p.icon)} ${escapeHtml(p.name)}<input class="duration-input" data-id="${p.id}" type="number" min="0" max="24" step="0.1" value="${Math.round((day[p.id]||0)/360)/10}"> 小时</label>`).join('')}
 function renderCalendar(){const year=calendarDate.getFullYear(),month=calendarDate.getMonth();$('monthLabel').textContent=`${year}年 ${month+1}月`;const first=new Date(year,month,1).getDay(),count=new Date(year,month+1,0).getDate();let html=['日','一','二','三','四','五','六'].map(d=>`<div class="day head">${d}</div>`).join('');for(let i=0;i<first;i++)html+='<div></div>';for(let d=1;d<=count;d++){const key=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,seconds=dayTotal(state.study[key]),heat=calendarHeat(seconds);html+=`<div class="day${seconds?' has-study':''}${heat.dark?' heat-dark':''}${key===chinaDate()?' today':''}" style="--heat:${heat.alpha}" title="${key}${seconds?` · 学习 ${formatHours(seconds)}`:' · 暂无记录'}"><span>${d}</span>${seconds?`<small>${formatHours(seconds)}</small>`:''}</div>`}$('calendar').innerHTML=html}
 function renderProjectDialog(){$('projectRows').innerHTML=state.projects.map(p=>`<div class="project-row" data-row="${p.id}" style="opacity:${p.archived?.55:1}"><input class="p-icon" value="${escapeHtml(p.icon)}"><input class="p-name" value="${escapeHtml(p.name)}"><input class="p-color" type="color" value="${p.color}"><button class="p-archive">${p.archived?'恢复':'归档'}</button></div>`).join('');document.querySelectorAll('[data-row]').forEach(row=>{const id=row.dataset.row,project=state.projects.find(p=>p.id===id);row.querySelectorAll('input').forEach(input=>input.onchange=async()=>{try{const body=input.classList.contains('p-name')?{name:input.value}:input.classList.contains('p-icon')?{icon:input.value}:{color:input.value};await apiFetch(`/api/projects/${id}`,{method:'PATCH',body});await loadData()}catch(error){toast(error.message)}});row.querySelector('.p-archive').onclick=async()=>{try{await apiFetch(`/api/projects/${id}`,{method:'PATCH',body:{archived:!project.archived}});await loadData()}catch(error){toast(error.message)}}})}
 

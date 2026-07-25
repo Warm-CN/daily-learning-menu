@@ -253,6 +253,31 @@ textarea {
     gap: 8px;
 }
 
+.version-switch {
+    display: flex;
+    padding: 3px;
+    border: 1px solid #e6ebf2;
+    border-radius: 999px;
+    background: #f6f8fb;
+}
+
+.version-switch button {
+    min-height: 28px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text3);
+    font-size: .68rem;
+    white-space: nowrap;
+}
+
+.version-switch button.active {
+    background: #fff;
+    color: var(--accent);
+    box-shadow: 0 2px 7px rgba(30, 45, 70, .1);
+}
+
 .account form {
     margin: 0;
 }
@@ -1684,6 +1709,11 @@ dialog::backdrop {
 
     .nav-link {
         padding: 6px 10px;
+    }
+
+    .version-switch button {
+        padding-inline: 7px;
+        font-size: .62rem;
     }
 
     .user-chip {

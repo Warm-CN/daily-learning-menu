@@ -1,13 +1,40 @@
-{% extends 'base.html' %}{% block title %}学习看板{% endblock %}
-{% block head %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>{% endblock %}
+{% extends 'base.html' %}{% block title %}{{ '宝可梦养成' if pokemon_mode else '学习看板' }}{% endblock %}
+{% block head %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>{% if pokemon_mode %}<link rel="stylesheet" href="{{ url_for('static', filename='pokemon.css', v='20260724-1') }}">{% endif %}{% endblock %}
 {% block content %}
 <div class="view-tabs" role="tablist" aria-label="看板视图"><button class="active" data-view="home">首页</button><button data-view="timer">计时</button><button data-view="stats">统计</button><button data-view="calendar">日历</button></div>
+{% if pokemon_mode %}
+<section id="view-home" class="view active pokemon-home">
+  <div class="pokemon-hero"><div><span class="pokemon-kicker">STUDY TRAINER</span><h1>和伙伴一起，把专注练成超能力</h1><div id="homeDate" class="home-date"></div></div><div class="trainer-chip">训练师 · {{ current_user.username }}</div></div>
+  <div id="todayCards" class="stats-row"></div>
+  <div class="pokemon-dashboard">
+    <div class="card pokemon-progress-card">
+      <div class="card-title">📚 养成进度 <span class="badge" id="pokemonRewardHint">完成计时获得经验</span></div>
+      <div class="pokemon-mini-stats"><div><span>当前等级</span><strong id="pokemonLevel">0</strong></div><div><span>已毕业</span><strong id="pokemonGraduated">0</strong></div><div><span>待分配经验</span><strong id="pokemonUnspent">0h</strong></div></div>
+      <div class="pokemon-level-row"><span>等级进度</span><strong id="pokemonLevelLabel">0 / 50</strong></div>
+      <div class="pokemon-progress"><i id="pokemonLevelFill"></i></div>
+      <p class="pokemon-rule">每累计完成 1 小时计时提升 1 级，达到进化等级后自动进化。</p>
+      <button id="claimPokemon" class="primary pokemon-claim" hidden>🎯 选择新伙伴</button>
+    </div>
+    <div class="card pokemon-partner-card">
+      <div class="card-title">🎯 当前伙伴 <span class="badge" id="pokemonStage">未选择</span></div>
+      <div id="pokemonPartner" class="pokemon-partner"></div>
+      <div id="pokemonEvolutionChain" class="pokemon-evolution-chain"></div>
+    </div>
+  </div>
+  <div class="card pokemon-pokedex-card"><div class="card-title">📖 宝可梦图鉴 <span class="badge" id="pokedexCount">0 / 151</span></div><div id="pokedexGrid" class="pokedex-grid"></div></div>
+  <div class="pokemon-journal-grid">
+    <div class="card"><div class="card-title">⚡ 今日精力评分</div><div class="energy-control"><input id="energy" type="range" min="0" max="100"><strong id="energyValue" class="energy-score">0</strong></div></div>
+    <div class="card"><div class="card-title">📝 今日学习记录</div><textarea id="notes" class="notes-area" rows="4" placeholder="记录今天的学习内容、收获和反思"></textarea><div class="card-actions"><button id="saveNotes" class="primary">保存记录</button></div></div>
+  </div>
+</section>
+{% else %}
 <section id="view-home" class="view active">
   <div class="home-intro"><div id="homeDate" class="home-date"></div><div class="home-quote">“每一次专注，都在缩短你与目标的距离。”<span>FOCUS MAKES PROGRESS VISIBLE</span></div></div>
   <div id="todayCards" class="stats-row"></div>
   <div class="card"><div class="card-title">⚡ 今日精力评分</div><div class="energy-control"><input id="energy" type="range" min="0" max="100"><strong id="energyValue" class="energy-score">0</strong></div></div>
   <div class="card"><div class="card-title">📝 今日学习记录</div><textarea id="notes" class="notes-area" rows="4" placeholder="记录今天的学习内容、收获和反思"></textarea><div class="card-actions"><button id="saveNotes" class="primary">保存记录</button></div></div>
 </section>
+{% endif %}
 <section id="view-timer" class="view"><div class="card timer-card">
   <div class="mode-wrap"><div class="mode-btns"><button id="countupMode" class="mode active">📈 正向计时</button><button id="countdownMode" class="mode">⏳ 倒计时</button></div></div>
   <div id="projectPicker" class="project-picker"></div><button id="manageProjects" class="manage-projects">⚙ 管理项目</button>
@@ -30,4 +57,4 @@
  <div class="inline wrap project-add"><input id="newIcon" value="📚" maxlength="4" class="icon-input"><input id="newName" placeholder="新项目名称" maxlength="20"><input id="newColor" type="color" value="#4f8cf7"><button id="addProject" class="primary">添加</button></div></dialog>
 <div class="foot-bar"><span>今日：<strong id="footToday">0h</strong></span><span>本周：<strong id="footWeek">0h</strong></span></div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='dashboard.js', v='20260721-ui4') }}"></script>{% endblock %}
+{% block scripts %}{% if pokemon_mode %}<script src="{{ url_for('static', filename='pokemon-data.js', v='20260724-1') }}"></script><script src="{{ url_for('static', filename='pokemon.js', v='20260724-1') }}"></script>{% endif %}<script src="{{ url_for('static', filename='dashboard.js', v='20260724-2') }}"></script>{% endblock %}

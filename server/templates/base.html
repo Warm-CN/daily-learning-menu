@@ -12,15 +12,21 @@
 {% if current_user.is_authenticated %}
 <header class="topbar">
     <div class="topbar-inner">
-        <a class="brand" href="{{ url_for('admin_page') if current_user.is_admin else url_for('dashboard') }}"><span class="brand-mark">🍅</span><span class="brand-text">考研看板</span></a>
+        <a class="brand" href="{{ url_for('admin_page') if current_user.is_admin else url_for('pokemon_page') if current_user.preferred_version == 'pokemon' else url_for('dashboard') }}"><span class="brand-mark">🍅</span><span class="brand-text">考研看板</span></a>
         <nav class="main-nav" aria-label="主导航">
             {% if current_user.is_admin %}
             <a class="nav-link active" href="{{ url_for('admin_page') }}">用户管理</a>
             {% else %}
-            <a class="nav-link{% if request.endpoint == 'dashboard' %} active{% endif %}" href="{{ url_for('dashboard') }}">学习看板</a>
+            <a class="nav-link{% if request.endpoint in ['dashboard', 'pokemon_page'] %} active{% endif %}" href="{{ url_for('pokemon_page') if current_user.preferred_version == 'pokemon' else url_for('dashboard') }}">学习看板</a>
             <a class="nav-link{% if request.endpoint == 'friends_page' %} active{% endif %}" href="{{ url_for('friends_page') }}">好友</a>
             {% endif %}
         </nav>
+        {% if not current_user.is_admin %}
+        <div class="version-switch" aria-label="界面版本">
+            <button type="button" data-app-version="classic" class="{% if request.endpoint == 'dashboard' or (request.endpoint not in ['dashboard', 'pokemon_page'] and current_user.preferred_version == 'classic') %}active{% endif %}">专注版</button>
+            <button type="button" data-app-version="pokemon" class="{% if request.endpoint == 'pokemon_page' or (request.endpoint not in ['dashboard', 'pokemon_page'] and current_user.preferred_version == 'pokemon') %}active{% endif %}">宝可梦版</button>
+        </div>
+        {% endif %}
         <div class="account"><span class="user-chip">{{ current_user.username }}</span>
             <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="account-action">退出</button></form>
         </div>
@@ -39,6 +45,7 @@ async function apiFetch(url,options={}){
 }
 function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2400)}
 {% if current_user.is_authenticated and not current_user.is_admin %}
+document.querySelectorAll('[data-app-version]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{const data=await apiFetch('/api/preferences/version',{method:'PATCH',body:{version:button.dataset.appVersion}});location.href=data.url}catch(error){toast(error.message);button.disabled=false}}));
 async function heartbeat(){try{await apiFetch('/api/presence',{method:'POST'})}catch(error){if(error.status===401)location.href='/login'}}
 heartbeat();let presenceTimer=setInterval(heartbeat,20000);document.addEventListener('visibilitychange',()=>{clearInterval(presenceTimer);presenceTimer=setInterval(heartbeat,document.hidden?60000:20000);if(!document.hidden)heartbeat()});
 {% endif %}
