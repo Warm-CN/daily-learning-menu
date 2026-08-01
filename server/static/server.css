@@ -989,6 +989,215 @@ dialog::backdrop {
     font-size: 1.6rem;
 }
 
+.ranking-section {
+    margin-bottom: 14px;
+}
+
+.ranking-section-head {
+    display: flex;
+    margin: 0 3px 10px;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.ranking-section-head h2 {
+    margin: 2px 0 0;
+    font-size: 1.08rem;
+}
+
+.ranking-updated {
+    color: var(--text3);
+    font-size: .63rem;
+    white-space: nowrap;
+}
+
+.ranking-tabs {
+    display: none;
+}
+
+.ranking-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 12px;
+}
+
+.ranking-card {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    box-shadow: var(--shadow);
+}
+
+.ranking-card-head {
+    display: flex;
+    padding: 15px 16px 12px;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-light);
+    background: linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(247, 250, 255, .85));
+}
+
+.ranking-card-head h3,
+.ranking-card-head p {
+    margin: 0;
+}
+
+.ranking-card-head h3 {
+    color: var(--text);
+    font-size: .8rem;
+}
+
+.ranking-card-head p {
+    margin-top: 2px;
+    color: var(--text3);
+    font-size: .59rem;
+}
+
+.ranking-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 11px;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.ranking-icon.total {
+    background: #eef4ff;
+    color: #4f8cf7;
+}
+
+.ranking-icon.delta {
+    background: #fff1ef;
+    color: #ef5350;
+}
+
+.ranking-icon.longest {
+    background: #eafaf3;
+    color: #269e68;
+}
+
+.ranking-list {
+    min-height: 76px;
+    max-height: 374px;
+    margin: 0;
+    padding: 6px 8px 8px;
+    overflow-y: auto;
+    list-style: none;
+    scrollbar-width: thin;
+}
+
+.ranking-row {
+    display: grid;
+    min-height: 54px;
+    padding: 6px 7px;
+    align-items: center;
+    grid-template-columns: 28px 34px minmax(0, 1fr) auto;
+    gap: 7px;
+    border-radius: 11px;
+    transition: background var(--trans), transform var(--trans);
+}
+
+.ranking-row + .ranking-row {
+    border-top: 1px solid rgba(226, 232, 240, .72);
+}
+
+.ranking-row:hover {
+    background: #f8faff;
+}
+
+.ranking-row.self {
+    background: color-mix(in srgb, var(--rank-soft) 68%, #fff);
+    box-shadow: inset 3px 0 var(--rank-color);
+}
+
+.ranking-row.empty:not(.self) {
+    opacity: .66;
+}
+
+.ranking-position {
+    color: var(--text3);
+    font-size: .7rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.rank-1 .ranking-position,
+.rank-2 .ranking-position,
+.rank-3 .ranking-position {
+    font-size: 1rem;
+}
+
+.ranking-avatar {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--rank-soft);
+    font-size: 1rem;
+}
+
+.ranking-person {
+    min-width: 0;
+}
+
+.ranking-person strong,
+.ranking-person small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ranking-person strong {
+    color: var(--text);
+    font-size: .69rem;
+}
+
+.ranking-person strong em {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    background: var(--rank-color);
+    color: #fff;
+    font-size: .5rem;
+    font-style: normal;
+    vertical-align: 1px;
+}
+
+.ranking-person small {
+    margin-top: 2px;
+    color: var(--text3);
+    font-size: .54rem;
+}
+
+.ranking-value {
+    color: var(--text);
+    font-size: .68rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.ranking-value.positive {
+    color: #e94b4b;
+}
+
+.ranking-value.negative {
+    color: #269e68;
+}
+
+.ranking-value.flat {
+    color: var(--text3);
+}
+
 .friend-search {
     display: flex;
     align-items: center;
@@ -1794,6 +2003,50 @@ dialog::backdrop {
         grid-column: 1 / -1;
     }
 
+    .ranking-section-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .ranking-tabs {
+        display: grid;
+        margin-bottom: 8px;
+        padding: 3px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        background: #edf1f6;
+    }
+
+    .ranking-tabs button {
+        min-width: 0;
+        min-height: 32px;
+        padding: 4px 6px;
+        border: 0;
+        background: transparent;
+        color: var(--text3);
+        font-size: .64rem;
+    }
+
+    .ranking-tabs button.active {
+        background: #fff;
+        color: var(--accent);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .ranking-grid {
+        display: block;
+    }
+
+    .ranking-card {
+        display: none;
+    }
+
+    .ranking-card.active {
+        display: block;
+    }
+
     .friend-search {
         align-items: stretch;
         flex-direction: column;
@@ -1847,6 +2100,21 @@ dialog::backdrop {
 
     .timer-actions button {
         min-width: 80px;
+    }
+
+    .ranking-row {
+        padding-inline: 4px;
+        grid-template-columns: 25px 31px minmax(0, 1fr) auto;
+        gap: 5px;
+    }
+
+    .ranking-avatar {
+        width: 30px;
+        height: 30px;
+    }
+
+    .ranking-value {
+        font-size: .63rem;
     }
 
     .page-icon {

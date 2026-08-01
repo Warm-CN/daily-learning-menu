@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}考研看板{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='server.css', v='20260721-ui5') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='server.css', v='20260801-rankings1') }}">
     {% block head %}{% endblock %}
 </head>
 <body class="{% if current_user.is_authenticated %}app-body{% else %}auth-body{% endif %}">
@@ -18,6 +18,7 @@
             <a class="nav-link active" href="{{ url_for('admin_page') }}">用户管理</a>
             {% else %}
             <a class="nav-link{% if request.endpoint in ['dashboard', 'pokemon_page'] %} active{% endif %}" href="{{ url_for('pokemon_page') if current_user.preferred_version == 'pokemon' else url_for('dashboard') }}">学习看板</a>
+            <a class="nav-link{% if request.endpoint == 'trends_page' %} active{% endif %}" href="{{ url_for('trends_page') }}">趋势</a>
             <a class="nav-link{% if request.endpoint == 'friends_page' %} active{% endif %}" href="{{ url_for('friends_page') }}">好友</a>
             {% endif %}
         </nav>

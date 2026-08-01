@@ -550,7 +550,9 @@ def serialize_timer(timer):
     return {"sessionId": timer.session_uuid, "projectId": project.external_id if project else None,
             "projectName": project.name if project else "未知项目", "mode": timer.mode,
             "targetSeconds": timer.target_seconds, "phase": timer.phase, "elapsedSeconds": elapsed,
-            "remainingSeconds": remaining, "serverNow": now.isoformat() + "Z", "version": timer.version}
+            "remainingSeconds": remaining,
+            "sessionStartedAt": as_utc(timer.session_started_at).isoformat().replace("+00:00", "Z"),
+            "serverNow": now.isoformat() + "Z", "version": timer.version}
 
 
 def build_bundle(user_id):
@@ -595,6 +597,176 @@ def build_bundle(user_id):
     user = db.session.get(User, user_id)
     bundle["preferredVersion"] = user.preferred_version if user else "classic"
     return bundle
+
+
+def local_date_bounds(study_date):
+    start = datetime.combine(study_date, datetime.min.time(), tzinfo=APP_TZ).astimezone(UTC).replace(tzinfo=None)
+    end = (datetime.combine(study_date, datetime.min.time(), tzinfo=APP_TZ) + timedelta(days=1)).astimezone(UTC).replace(tzinfo=None)
+    return start, end
+
+
+def active_timer_seconds_for_day(timer, study_date, now=None):
+    if not timer:
+        return 0
+    now = now or utcnow()
+    segments = list(timer_segments(timer))
+    if timer.phase == "running" and timer.segment_started_at:
+        segments.append([timer.segment_started_at.isoformat(), now.isoformat()])
+    seconds = timer_elapsed(timer, now)
+    if timer.mode == "countdown":
+        seconds = min(seconds, timer.target_seconds or seconds)
+    by_day, _ = split_segments(segments, max(0, round(seconds)))
+    return int(by_day.get(study_date, 0))
+
+
+def build_friend_rankings(user_id):
+    today = datetime.now(APP_TZ).date()
+    yesterday = today - timedelta(days=1)
+    now = utcnow()
+    participant_ids = set(friend_ids(user_id)) | {user_id}
+    users = list(db.session.scalars(db.select(User).where(User.id.in_(participant_ids))))
+    users = [user for user in users if user.id == user_id or (user.is_approved and not user.is_admin)]
+    user_ids = [user.id for user in users]
+
+    timers = {user.id: refresh_timer(user.id) for user in users}
+    settled = defaultdict(int)
+    if user_ids:
+        rows = db.session.execute(db.select(
+            DailyStudy.user_id, DailyStudy.study_date, func.coalesce(func.sum(DailyStudy.seconds), 0)
+        ).where(
+            DailyStudy.user_id.in_(user_ids), DailyStudy.study_date.in_((yesterday, today))
+        ).group_by(DailyStudy.user_id, DailyStudy.study_date))
+        for member_id, study_date, seconds in rows:
+            settled[(member_id, study_date)] = int(seconds or 0)
+
+    today_start, today_end = local_date_bounds(today)
+    longest = defaultdict(int)
+    if user_ids:
+        rows = db.session.execute(db.select(
+            StudySession.user_id, func.max(StudySession.duration_seconds)
+        ).where(
+            StudySession.user_id.in_(user_ids), StudySession.started_at >= today_start,
+            StudySession.started_at < today_end
+        ).group_by(StudySession.user_id))
+        for member_id, seconds in rows:
+            longest[member_id] = int(seconds or 0)
+
+    members = []
+    for user in users:
+        timer = timers[user.id]
+        today_active = active_timer_seconds_for_day(timer, today, now)
+        yesterday_active = active_timer_seconds_for_day(timer, yesterday, now)
+        active = None
+        if timer:
+            elapsed = timer_elapsed(timer, now)
+            limit = timer.target_seconds if timer.mode == "countdown" else 86400
+            active = {"phase": timer.phase, "mode": timer.mode,
+                      "growthRemainingSeconds": max(0.0, float(limit or 0) - elapsed)}
+        today_seconds = settled[(user.id, today)] + today_active
+        yesterday_seconds = settled[(user.id, yesterday)] + yesterday_active
+        members.append({"id": user.id, "username": user.username, "isSelf": user.id == user_id,
+                        "todaySettledSeconds": settled[(user.id, today)],
+                        "todayActiveSeconds": today_active,
+                        "yesterdaySettledSeconds": settled[(user.id, yesterday)],
+                        "yesterdayActiveSeconds": yesterday_active,
+                        "todaySeconds": today_seconds, "yesterdaySeconds": yesterday_seconds,
+                        "longestSessionSeconds": longest[user.id], "activeTimer": active})
+
+    members.sort(key=lambda item: item["username"].casefold())
+    return {"date": today.isoformat(), "timezone": str(APP_TZ),
+            "serverNow": as_utc(now).isoformat().replace("+00:00", "Z"), "members": members}
+
+
+def trend_projects(user_id):
+    return [project_dict(item) for item in get_projects(user_id)]
+
+
+def build_trend_data(user_id, interval, project, selected_date, limit):
+    today = datetime.now(APP_TZ).date()
+    current_timer = refresh_timer(user_id) if interval == "intraday" and selected_date == today else None
+    if interval == "intraday":
+        start_date = end_date = selected_date
+    elif interval == "day":
+        end_date = today
+        start_date = end_date - timedelta(days=limit - 1)
+    else:
+        end_date = today - timedelta(days=today.weekday()) + timedelta(days=6)
+        start_date = end_date - timedelta(weeks=limit) + timedelta(days=1)
+
+    start_at, _ = local_date_bounds(start_date)
+    _, end_at = local_date_bounds(end_date)
+    study_query = db.select(DailyStudy).where(
+        DailyStudy.user_id == user_id, DailyStudy.study_date >= start_date, DailyStudy.study_date <= end_date)
+    session_query = db.select(StudySession).where(
+        StudySession.user_id == user_id, StudySession.started_at >= start_at, StudySession.started_at < end_at)
+    if project:
+        study_query = study_query.where(DailyStudy.project_id == project.id)
+        session_query = session_query.where(StudySession.project_id == project.id)
+    daily_rows = list(db.session.scalars(study_query))
+    sessions = list(db.session.scalars(session_query.order_by(StudySession.started_at)))
+    project_map = {item.id: item for item in get_projects(user_id)}
+
+    if interval == "intraday":
+        total_seconds = sum(row.seconds for row in daily_rows)
+        session_seconds = sum(item.duration_seconds for item in sessions)
+        timer = current_timer
+        if timer and project and timer.project_id != project.id:
+            timer = None
+        now = utcnow()
+        active_seconds = active_timer_seconds_for_day(timer, selected_date, now)
+        active = None
+        if timer:
+            timer_project = project_map.get(timer.project_id)
+            total_elapsed = timer_elapsed(timer, now)
+            remaining = (max(0, (timer.target_seconds or 0) - total_elapsed)
+                         if timer.mode == "countdown" else None)
+            active = {"sessionId": timer.session_uuid,
+                      "projectId": timer_project.external_id if timer_project else None,
+                      "projectName": timer_project.name if timer_project else "未知项目",
+                      "phase": timer.phase, "mode": timer.mode,
+                      "elapsedSeconds": active_seconds,
+                      "remainingSeconds": remaining,
+                      "sessionStartedAt": as_utc(timer.session_started_at).isoformat().replace("+00:00", "Z"),
+                      "serverNow": as_utc(now).isoformat().replace("+00:00", "Z")}
+        return {"interval": interval, "date": selected_date.isoformat(),
+                "projectId": project.external_id if project else "all", "projects": trend_projects(user_id),
+                "timezone": str(APP_TZ), "totalSeconds": int(total_seconds),
+                "sessionSeconds": int(session_seconds), "activeSeconds": active_seconds,
+                "adjustmentSeconds": int(total_seconds - session_seconds),
+                "sessions": [{"startedAt": int(as_utc(item.started_at).timestamp() * 1000),
+                              "endedAt": int(as_utc(item.ended_at).timestamp() * 1000),
+                              "durationSeconds": item.duration_seconds,
+                              "projectId": project_map[item.project_id].external_id if item.project_id in project_map else None,
+                              "projectName": project_map[item.project_id].name if item.project_id in project_map else "未知项目"}
+                             for item in sessions], "activeTimer": active}
+
+    totals = defaultdict(int)
+    grouped_sessions = defaultdict(list)
+    for row in daily_rows:
+        key = row.study_date if interval == "day" else row.study_date - timedelta(days=row.study_date.weekday())
+        totals[key] += row.seconds
+    for item in sessions:
+        study_day = local_day(item.started_at)
+        key = study_day if interval == "day" else study_day - timedelta(days=study_day.weekday())
+        grouped_sessions[key].append(item)
+    keys = ([start_date + timedelta(days=offset) for offset in range(limit)] if interval == "day"
+            else [start_date + timedelta(weeks=offset) for offset in range(limit)])
+    candles = []
+    for key in keys:
+        items = grouped_sessions.get(key, [])
+        durations = [item.duration_seconds for item in items]
+        candle = {"key": key.isoformat(), "label": key.strftime("%m/%d"),
+                  "totalSeconds": int(totals.get(key, 0)), "sessionCount": len(items),
+                  "openSeconds": durations[0] if durations else None,
+                  "highSeconds": max(durations) if durations else None,
+                  "lowSeconds": min(durations) if durations else None,
+                  "closeSeconds": durations[-1] if durations else None}
+        if interval == "week":
+            candle["weekEnd"] = (key + timedelta(days=6)).isoformat()
+        candles.append(candle)
+    return {"interval": interval, "limit": limit,
+            "projectId": project.external_id if project else "all", "projects": trend_projects(user_id),
+            "timezone": str(APP_TZ), "candles": candles}
 
 
 def validate_bundle(payload):
@@ -923,6 +1095,11 @@ def create_app(test_config=None):
     @login_required
     def friends_page():
         return render_template("friends.html")
+
+    @app.get("/trends")
+    @login_required
+    def trends_page():
+        return render_template("trends.html")
 
     register_admin_routes(app)
     register_api_routes(app)
@@ -1301,6 +1478,47 @@ def register_api_routes(app):
                            "todaySeconds": int(total), "timer": serialize_timer(timer) if online else None})
         db.session.commit()
         return api_ok(result)
+
+    @app.get("/api/friends/rankings")
+    @login_required
+    def friend_rankings():
+        result = build_friend_rankings(current_user.id)
+        db.session.commit()
+        response = jsonify({"ok": True, "data": result})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/api/trends")
+    @login_required
+    def trends_data():
+        interval = request.args.get("interval", "intraday")
+        if interval not in {"intraday", "day", "week"}:
+            return api_error("趋势周期无效")
+        project_id = request.args.get("projectId", "all")
+        project = None
+        if project_id != "all":
+            project = get_project(current_user.id, project_id)
+            if not project:
+                return api_error("项目不存在")
+        raw_date = request.args.get("date")
+        try:
+            selected_date = date.fromisoformat(raw_date) if raw_date else datetime.now(APP_TZ).date()
+        except ValueError:
+            return api_error("日期无效")
+        allowed_limits = {"day": {30, 90, 180}, "week": {26, 52, 104}}
+        if interval in allowed_limits:
+            default_limit = 30 if interval == "day" else 26
+            try:
+                limit = int(request.args.get("limit", default_limit))
+            except (TypeError, ValueError):
+                return api_error("趋势范围无效")
+            if limit not in allowed_limits[interval]:
+                return api_error("趋势范围无效")
+        else:
+            limit = 1
+        data = build_trend_data(current_user.id, interval, project, selected_date, limit)
+        db.session.commit()
+        return api_ok(data)
 
     @app.get("/api/data/export")
     @login_required

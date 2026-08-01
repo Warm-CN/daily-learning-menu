@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}学习趋势{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='trends.css', v='20260801-3') }}"><script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>{% endblock %}
+{% block content %}
+<section class="trend-page">
+  <div class="trend-heading">
+    <div><span class="trend-kicker">FOCUS TREND</span><h1>学习时间趋势</h1><p>像看行情一样，观察专注节奏与学习总量的变化。</p></div>
+    <div class="trend-periods" role="tablist" aria-label="趋势周期">
+      <button class="active" data-interval="intraday">分时</button><button data-interval="day">日线</button><button data-interval="week">周线</button>
+    </div>
+  </div>
+
+  <div class="card trend-toolbar">
+    <label>学习项目<select id="trendProject"><option value="all">全部项目</option></select></label>
+    <label id="trendDateWrap">查看日期<input id="trendDate" type="date"></label>
+    <div id="trendRangeWrap" class="trend-range" hidden><span>显示范围</span><div id="trendRangeButtons"></div></div>
+    <button id="refreshTrend" type="button">↻ 刷新</button>
+  </div>
+
+  <div id="trendSummary" class="stats-row trend-summary"></div>
+
+  <div class="card trend-chart-card">
+    <div class="trend-chart-head">
+      <div><div id="trendChartTitle" class="card-title">📈 今日分时</div><p id="trendExplanation">曲线展示完成计时的累计时长，虚线表示当前正在进行的计时。</p></div>
+      <div id="trendLive" class="trend-live" hidden><i></i><span>实时</span></div>
+    </div>
+    <div id="trendChart" class="trend-chart" role="img" aria-label="学习趋势图"></div>
+    <div id="trendEmpty" class="trend-empty" hidden><span>📭</span><strong>这个范围还没有学习数据</strong><p>完成一次计时后，这里会出现趋势。</p></div>
+    <div class="trend-legend"><span><i class="rise"></i>末次专注更长</span><span><i class="fall"></i>末次专注更短</span><span><i class="flat"></i>持平</span><span><i class="volume"></i>总学习时长（含补录）</span></div>
+  </div>
+
+  <div class="card trend-guide"><div class="card-title">如何阅读</div><p><strong>开 / 高 / 低 / 收</strong>分别表示周期内首次、最长、最短和末次完成计时的时长。下方柱形表示统计总时长；手动补录、修正或跨零点拆分都可能使它与 K 线会话之和不同。</p></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='trends.js', v='20260801-2') }}"></script>{% endblock %}

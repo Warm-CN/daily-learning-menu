@@ -24,9 +24,28 @@ async function register(client,username){await client.waitFor("document.querySel
         await new Promise(r=>setTimeout(r,1200));
         const visible=await bob.evaluate("apiFetch('/api/friends/status')");
         assert.equal(visible[0].username,'alice_browser');assert.equal(visible[0].online,true);assert.equal(visible[0].timer.projectName,'数学');
+        await bob.evaluate("location.href='/friends'");
+        await bob.waitFor("location.pathname==='/friends' && rankingState.members.length===2 && document.querySelectorAll('#rankingTotal .ranking-row').length===2");
+        assert.equal(await bob.evaluate("document.querySelectorAll('.ranking-row.self').length"),3);
+        const rankingBefore=await bob.evaluate("liveRankingMembers().find(item=>item.username==='alice_browser').todaySeconds");
+        await new Promise(r=>setTimeout(r,1100));
+        const rankingAfter=await bob.evaluate("liveRankingMembers().find(item=>item.username==='alice_browser').todaySeconds");
+        assert.ok(rankingAfter>rankingBefore,'活动计时应在排行榜中每秒增长');
+        await bob.command('Emulation.setDeviceMetricsOverride',{width:1200,height:900,deviceScaleFactor:1,mobile:false});
+        const desktop=await bob.evaluate("[...document.querySelectorAll('[data-ranking-card]')].map(card=>({top:card.getBoundingClientRect().top,display:getComputedStyle(card).display}))");
+        assert.ok(desktop.every(item=>item.display!=='none')&&desktop.every(item=>Math.abs(item.top-desktop[0].top)<1),'桌面端三个榜单应并排显示');
+        await bob.command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+        assert.notEqual(await bob.evaluate("getComputedStyle(document.querySelector('.ranking-tabs')).display"),'none');
+        assert.equal(await bob.evaluate("[...document.querySelectorAll('[data-ranking-card]')].filter(card=>getComputedStyle(card).display!=='none').length"),1);
+        await bob.evaluate("document.querySelector('[data-ranking-tab=delta]').click()");
+        assert.equal(await bob.evaluate("document.querySelector('[data-ranking-card=delta]').classList.contains('active')"),true);
+        assert.equal(await bob.evaluate("document.documentElement.scrollWidth<=document.documentElement.clientWidth"),true);
         await alice.evaluate(`apiFetch('/api/timer/stop',{method:'POST',body:{sessionId:${JSON.stringify(timer.sessionId)},version:${timer.version}}})`);
         const completed=await bob.evaluate("apiFetch('/api/friends/status')");
         assert.ok(completed[0].todaySeconds>=1);assert.equal(completed[0].timer,null);
+        await bob.evaluate("loadOverview()");
+        await bob.waitFor("rankingState.members.find(item=>item.username==='alice_browser')?.activeTimer===null");
+        assert.ok(await bob.evaluate("rankingState.members.find(item=>item.username==='alice_browser').longestSessionSeconds")>=1);
         console.log('server browser workflow tests passed');
     }finally{await Promise.all([alice.close(),bob.close()])}
 })().catch(error=>{console.error(error);process.exitCode=1});

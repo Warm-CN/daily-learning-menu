@@ -320,6 +320,8 @@ sudo systemctl start kaoyan.service
 sudo systemctl status kaoyan.service --no-pager
 ```
 
+趋势页只增加只读聚合接口和静态资源，不修改数据库结构，也没有新增 Python 依赖。它与现有统计页一样从 jsDelivr 加载固定版本的图表库，因此无需调整 Nginx、80/443 端口或 systemd 配置。
+
 当前版本使用 `db.create_all()` 初始化新表。将来如果修改已有表字段，应先加入数据库迁移工具和迁移脚本，不要直接删除生产数据库重建。
 
 ## 13. 常用维护命令

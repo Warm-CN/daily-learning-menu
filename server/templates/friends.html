@@ -1,5 +1,18 @@
 {% extends 'base.html' %}{% block title %}好友 · 考研看板{% endblock %}
-{% block content %}<div class="page-title"><div><span class="eyebrow">STUDY TOGETHER</span><h1>好友状态</h1><p class="muted">查看好友是否在线、正在学习什么以及今日完成时长</p></div><span class="page-icon">👥</span></div>
+{% block content %}<div class="page-title"><div><span class="eyebrow">STUDY TOGETHER</span><h1>好友状态</h1><p class="muted">和研友一起看见今天的投入、进步与深度专注</p></div><span class="page-icon">👥</span></div>
+<section class="ranking-section" aria-labelledby="rankingTitle">
+  <div class="ranking-section-head"><div><span class="eyebrow">TODAY'S RANKING</span><h2 id="rankingTitle">今日排行榜</h2></div><span id="rankingUpdated" class="ranking-updated">正在同步…</span></div>
+  <div class="ranking-tabs" role="tablist" aria-label="选择排行榜">
+    <button type="button" class="active" data-ranking-tab="total" role="tab" aria-selected="true">学习总榜</button>
+    <button type="button" data-ranking-tab="delta" role="tab" aria-selected="false">较昨日</button>
+    <button type="button" data-ranking-tab="longest" role="tab" aria-selected="false">最长单次</button>
+  </div>
+  <div class="ranking-grid">
+    <article class="ranking-card active" data-ranking-card="total"><div class="ranking-card-head"><span class="ranking-icon total">⏱</span><div><h3>今日学习总榜</h3><p>含正在进行的有效计时</p></div></div><ol id="rankingTotal" class="ranking-list"></ol></article>
+    <article class="ranking-card" data-ranking-card="delta"><div class="ranking-card-head"><span class="ranking-icon delta">↗</span><div><h3>今日较昨日进步榜</h3><p>今日实时总量与昨日比较</p></div></div><ol id="rankingDelta" class="ranking-list"></ol></article>
+    <article class="ranking-card" data-ranking-card="longest"><div class="ranking-card-head"><span class="ranking-icon longest">◎</span><div><h3>今日最长单次专注</h3><p>只统计已经完成的计时</p></div></div><ol id="rankingLongest" class="ranking-list"></ol></article>
+  </div>
+</section>
 <div class="card"><div class="card-title">➕ 添加好友</div><div class="friend-search"><input id="friendQuery" placeholder="输入完整用户名"><button id="addFriend" class="primary">直接添加</button></div><div id="searchResults"></div></div>
 <div id="friendList" class="friend-grid"></div>{% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='friends.js', v='20260722-lastseen1') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='friends.js', v='20260801-rankings1') }}"></script>{% endblock %}

@@ -1,5 +1,13 @@
 const list = document.getElementById('friendList');
 const query = document.getElementById('friendQuery');
+const rankingUpdated = document.getElementById('rankingUpdated');
+const rankingLists = {
+    total: document.getElementById('rankingTotal'),
+    delta: document.getElementById('rankingDelta'),
+    longest: document.getElementById('rankingLongest'),
+};
+let rankingState = { members: [], syncedAt: 0, date: '', failed: false };
+let overviewPromise = null;
 const avatars = ['🐼', '🦊', '🐰', '🐯', '🐨', '🐧', '🦁', '🐸', '🦄', '🐳', '🦉', '🐙'];
 const palettes = [
     ['#4f8cf7', '#eef4ff'],
@@ -26,6 +34,110 @@ function duration(seconds) {
     const minutes = Math.floor((safeSeconds % 3600) / 60);
     if (!hours) return `${minutes}分钟`;
     return minutes ? `${hours}小时 ${minutes}分钟` : `${hours}小时`;
+}
+
+function clockDuration(seconds) {
+    const value = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.floor((value % 3600) / 60);
+    const remainder = value % 60;
+    return [hours, minutes, remainder].map(part => String(part).padStart(2, '0')).join(':');
+}
+
+function chinaDateKey(value = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(value);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
+function liveRankingMembers() {
+    const growth = Math.max(0, Math.floor((Date.now() - rankingState.syncedAt) / 1000));
+    return rankingState.members.map(member => {
+        const remaining = Math.max(0, Number(member.activeTimer?.growthRemainingSeconds) || 0);
+        const added = member.activeTimer?.phase === 'running' ? Math.min(growth, remaining) : 0;
+        return { ...member, todaySeconds: Number(member.todaySeconds) + added };
+    });
+}
+
+function compareName(left, right) {
+    return left.username.localeCompare(right.username, 'zh-CN', { sensitivity: 'base' });
+}
+
+function rankingRows(type, members) {
+    const rows = [...members];
+    rows.sort((left, right) => {
+        const leftMetric = type === 'total' ? left.todaySeconds
+            : type === 'delta' ? left.todaySeconds - left.yesterdaySeconds : left.longestSessionSeconds;
+        const rightMetric = type === 'total' ? right.todaySeconds
+            : type === 'delta' ? right.todaySeconds - right.yesterdaySeconds : right.longestSessionSeconds;
+        return (rightMetric - leftMetric) || (right.todaySeconds - left.todaySeconds) || compareName(left, right);
+    });
+    return rows;
+}
+
+function rankingCopy(member, type) {
+    if (type === 'total') {
+        return {
+            value: clockDuration(member.todaySeconds),
+            note: member.activeTimer?.phase === 'running' ? '正在专注，时长实时增加' : `昨日 ${clockDuration(member.yesterdaySeconds)}`,
+            empty: member.todaySeconds <= 0,
+        };
+    }
+    if (type === 'delta') {
+        const delta = member.todaySeconds - member.yesterdaySeconds;
+        return {
+            value: delta > 0 ? `+${clockDuration(delta)}` : delta < 0 ? `−${clockDuration(-delta)}` : '持平',
+            note: delta > 0 ? `已超过昨日 ${clockDuration(delta)}`
+                : delta < 0 ? `距昨日还差 ${clockDuration(-delta)}` : '与昨日学习时长相同',
+            tone: delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'flat',
+            empty: member.todaySeconds <= 0 && member.yesterdaySeconds <= 0,
+        };
+    }
+    return {
+        value: member.longestSessionSeconds > 0 ? clockDuration(member.longestSessionSeconds) : '暂无记录',
+        note: member.longestSessionSeconds > 0 ? '今日已完成的最长单次' : '今天还没有完成计时',
+        empty: member.longestSessionSeconds <= 0,
+    };
+}
+
+function rankingRow(member, index, type) {
+    const identityHash = hash(member.username);
+    const avatar = avatars[identityHash % avatars.length];
+    const [color, soft] = palettes[identityHash % palettes.length];
+    const copy = rankingCopy(member, type);
+    const medal = index < 3 ? ['🥇', '🥈', '🥉'][index] : index + 1;
+    return `<li class="ranking-row rank-${Math.min(index + 1, 4)}${member.isSelf ? ' self' : ''}${copy.empty ? ' empty' : ''}" style="--rank-color:${color};--rank-soft:${soft}">
+        <span class="ranking-position">${medal}</span>
+        <span class="ranking-avatar">${avatar}</span>
+        <span class="ranking-person"><strong>${escapeHtml(member.username)}${member.isSelf ? '<em>我</em>' : ''}</strong><small>${escapeHtml(copy.note)}</small></span>
+        <span class="ranking-value ${copy.tone || ''}">${escapeHtml(copy.value)}</span>
+    </li>`;
+}
+
+function renderRankings() {
+    if (!rankingState.members.length) return;
+    const members = liveRankingMembers();
+    Object.entries(rankingLists).forEach(([type, element]) => {
+        element.innerHTML = rankingRows(type, members).map((member, index) => rankingRow(member, index, type)).join('');
+    });
+    if (!rankingState.failed) {
+        const age = Math.max(0, Math.floor((Date.now() - rankingState.syncedAt) / 1000));
+        rankingUpdated.textContent = `中国时区 · ${rankingState.date} · ${age < 5 ? '刚刚同步' : `${age} 秒前同步`}`;
+    }
+}
+
+async function loadRankings() {
+    try {
+        const data = await apiFetch('/api/friends/rankings');
+        rankingState = { members: data.members, syncedAt: Date.now(), date: data.date, failed: false };
+        renderRankings();
+    } catch (error) {
+        rankingState.failed = true;
+        rankingUpdated.textContent = rankingState.members.length ? '同步失败，保留上次结果' : '排行榜暂时不可用';
+        toast(error.message);
+    }
 }
 
 function achievement(seconds) {
@@ -107,7 +219,7 @@ async function loadFriends() {
                 if (!confirm('确定删除这位好友吗？')) return;
                 try {
                     await apiFetch(`/api/friends/${button.dataset.id}`, { method: 'DELETE' });
-                    await loadFriends();
+                    await loadOverview();
                 } catch (error) {
                     toast(error.message);
                 }
@@ -118,13 +230,19 @@ async function loadFriends() {
     }
 }
 
+async function loadOverview() {
+    if (overviewPromise) return overviewPromise;
+    overviewPromise = Promise.all([loadFriends(), loadRankings()]).finally(() => { overviewPromise = null; });
+    return overviewPromise;
+}
+
 document.getElementById('addFriend').onclick = async () => {
     const username = query.value.trim();
     if (!username) return;
     try {
         await apiFetch('/api/friends/add', { method: 'POST', body: { username } });
         query.value = '';
-        await loadFriends();
+        await loadOverview();
         toast('好友已添加');
     } catch (error) {
         toast(error.message);
@@ -156,10 +274,29 @@ query.oninput = () => {
     }, 250);
 };
 
-let friendTimer = setInterval(loadFriends, 15000);
+document.querySelectorAll('[data-ranking-tab]').forEach(button => {
+    button.onclick = () => {
+        document.querySelectorAll('[data-ranking-tab]').forEach(item => {
+            const selected = item === button;
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-selected', String(selected));
+        });
+        document.querySelectorAll('[data-ranking-card]').forEach(card => {
+            card.classList.toggle('active', card.dataset.rankingCard === button.dataset.rankingTab);
+        });
+    };
+});
+
+let friendTimer = setInterval(loadOverview, 15000);
+setInterval(() => {
+    if (!document.hidden) {
+        renderRankings();
+        if (rankingState.date && rankingState.date !== chinaDateKey()) loadOverview();
+    }
+}, 1000);
 document.addEventListener('visibilitychange', () => {
     clearInterval(friendTimer);
-    friendTimer = setInterval(loadFriends, document.hidden ? 60000 : 15000);
-    if (!document.hidden) loadFriends();
+    friendTimer = setInterval(loadOverview, document.hidden ? 60000 : 15000);
+    if (!document.hidden) loadOverview();
 });
-loadFriends();
+loadOverview();

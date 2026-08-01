@@ -1,0 +1,399 @@
+.trend-page {
+    --rise: #ef5350;
+    --fall: #26a269;
+    --flat: #94a3b8;
+    --volume: #6f91c8;
+}
+
+.trend-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    margin: 4px 0 18px;
+}
+
+.trend-heading h1 {
+    margin: 3px 0 5px;
+    font-size: clamp(1.45rem, 4vw, 2rem);
+}
+
+.trend-heading p,
+.trend-chart-head p,
+.trend-guide p {
+    margin: 0;
+    color: var(--text3);
+    font-size: .72rem;
+    line-height: 1.7;
+}
+
+.trend-kicker {
+    color: var(--accent);
+    font-size: .62rem;
+    font-weight: 900;
+    letter-spacing: .18em;
+}
+
+.trend-periods {
+    display: flex;
+    flex: 0 0 auto;
+    padding: 4px;
+    border: 1px solid #e5eaf1;
+    border-radius: 999px;
+    background: #f5f7fa;
+}
+
+.trend-periods button {
+    min-width: 62px;
+    min-height: 34px;
+    padding: 5px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text3);
+}
+
+.trend-periods button.active {
+    background: #fff;
+    color: var(--accent);
+    box-shadow: 0 3px 10px rgba(30, 45, 70, .1);
+}
+
+.trend-toolbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 15px;
+}
+
+.trend-toolbar label,
+.trend-range {
+    display: grid;
+    gap: 6px;
+    color: var(--text3);
+    font-size: .64rem;
+}
+
+.trend-toolbar > label {
+    width: 210px;
+    flex: 0 0 210px;
+}
+
+.trend-toolbar select,
+.trend-toolbar input,
+.trend-toolbar > button,
+.trend-range button {
+    box-sizing: border-box;
+    height: 42px;
+    min-height: 42px;
+    margin: 0;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--text);
+    font-size: .74rem;
+}
+
+.trend-toolbar select,
+.trend-toolbar input {
+    width: 100%;
+    min-width: 0;
+    padding: 0 13px;
+    transition: border-color var(--trans), box-shadow var(--trans), background var(--trans);
+}
+
+.trend-toolbar select:focus,
+.trend-toolbar input:focus {
+    border-color: var(--accent);
+    outline: 0;
+    box-shadow: 0 0 0 4px rgba(79, 140, 247, .08);
+}
+
+.trend-toolbar > button {
+    min-width: 92px;
+    padding: 0 16px;
+}
+
+.trend-range {
+    flex: 1;
+}
+
+.trend-range > div {
+    display: flex;
+    gap: 5px;
+}
+
+.trend-range button {
+    padding: 0 13px;
+}
+
+.trend-range button.active {
+    border-color: var(--accent);
+    background: rgba(79, 140, 247, .09);
+    color: var(--accent);
+}
+
+.trend-summary .stat-card strong {
+    font-size: 1.2rem;
+}
+
+.trend-chart-card {
+    padding: 17px 18px 13px;
+}
+
+.trend-chart-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.trend-chart-head p {
+    margin-top: 4px;
+}
+
+.trend-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: rgba(239, 83, 80, .08);
+    color: var(--rise);
+    font-size: .62rem;
+}
+
+.trend-live i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 4px rgba(239, 83, 80, .12);
+}
+
+.trend-chart {
+    width: 100%;
+    height: 520px;
+    margin-top: 8px;
+}
+
+.trend-empty {
+    min-height: 360px;
+    place-items: center;
+    align-content: center;
+    text-align: center;
+}
+
+.trend-empty:not([hidden]) {
+    display: grid;
+}
+
+.trend-empty span {
+    font-size: 3rem;
+}
+
+.trend-empty strong {
+    margin-top: 8px;
+}
+
+.trend-empty p {
+    margin: 5px 0 0;
+    color: var(--text3);
+    font-size: .7rem;
+}
+
+.trend-legend {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    color: var(--text3);
+    font-size: .6rem;
+}
+
+.trend-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.trend-legend i {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    background: var(--flat);
+}
+
+.trend-legend .rise { background: var(--rise); }
+.trend-legend .fall { background: var(--fall); }
+.trend-legend .volume { background: var(--volume); }
+
+.trend-guide {
+    padding: 15px 18px;
+}
+
+.trend-tooltip {
+    width: 244px;
+    padding: 13px 14px;
+    color: #f8fafc;
+    font-weight: 500;
+}
+
+.trend-tooltip-head,
+.trend-tooltip-foot,
+.trend-tooltip-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.trend-tooltip-head {
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(148, 163, 184, .2);
+    font-size: .73rem;
+    font-weight: 800;
+}
+
+.trend-tooltip-head em {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(96, 165, 250, .16);
+    color: #93c5fd;
+    font-size: .58rem;
+    font-style: normal;
+}
+
+.trend-tooltip-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 0 7px;
+    color: #cbd5e1;
+    font-size: .64rem;
+}
+
+.trend-tooltip-status i {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+}
+
+.trend-tooltip-status.rise { color: #fca5a5; }
+.trend-tooltip-status.fall { color: #86efac; }
+.trend-tooltip-status.flat { color: #cbd5e1; }
+
+.trend-tooltip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.trend-tooltip-grid div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, .065);
+}
+
+.trend-tooltip-grid span,
+.trend-tooltip-total small,
+.trend-tooltip-foot span {
+    color: #94a3b8;
+    font-size: .6rem;
+}
+
+.trend-tooltip-grid strong {
+    color: #f8fafc;
+    font-size: .68rem;
+}
+
+.trend-tooltip-total {
+    margin-top: 9px;
+    padding: 9px 8px;
+    border-radius: 8px;
+    background: rgba(96, 165, 250, .12);
+}
+
+.trend-tooltip-total strong {
+    color: #bfdbfe;
+    font-size: .84rem;
+}
+
+.trend-tooltip-foot {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(148, 163, 184, .16);
+}
+
+.trend-tooltip-foot b {
+    color: #e2e8f0;
+    font-size: .64rem;
+}
+
+.trend-tooltip-none {
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .06);
+    color: #cbd5e1;
+    font-size: .63rem;
+    text-align: center;
+}
+
+@media (max-width: 720px) {
+    .trend-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .trend-periods button {
+        flex: 1;
+    }
+
+    .trend-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .trend-toolbar select,
+    .trend-toolbar input {
+        width: 100%;
+    }
+
+    .trend-toolbar > label {
+        width: 100%;
+        flex-basis: auto;
+    }
+
+    .trend-range > div button {
+        flex: 1;
+    }
+
+    .trend-chart {
+        height: 460px;
+    }
+
+    .trend-chart-card {
+        padding-inline: 10px;
+    }
+}
+
+@media (max-width: 420px) {
+    .trend-periods button {
+        min-width: 0;
+        padding-inline: 8px;
+    }
+
+    .trend-chart {
+        height: 430px;
+    }
+
+    .trend-legend {
+        justify-content: flex-start;
+        gap: 8px 12px;
+    }
+}
