@@ -19,7 +19,7 @@ from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect, FlaskForm
-from sqlalchemy import UniqueConstraint, event, func, inspect, or_, text
+from sqlalchemy import Index, UniqueConstraint, event, func, inspect, or_, text
 from sqlalchemy.engine import Engine
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -136,6 +136,17 @@ class DailyMeta(db.Model):
     notes = db.Column(db.Text, nullable=False, default="")
     milestones_json = db.Column(db.Text, nullable=False, default="[]")
     __table_args__ = (UniqueConstraint("user_id", "study_date", name="uq_daily_meta"),)
+
+
+class KnowledgePoint(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    study_date = db.Column(db.Date, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    __table_args__ = (Index("ix_knowledge_user_date", "user_id", "study_date"),)
 
 
 class StudySession(db.Model):
@@ -297,6 +308,32 @@ def get_projects(user_id):
 
 def get_project(user_id, external_id):
     return db.session.scalar(db.select(Project).where(Project.user_id == user_id, Project.external_id == external_id))
+
+
+def knowledge_point_dict(item: KnowledgePoint, project=None):
+    project = project or db.session.get(Project, item.project_id)
+    return {"id": item.id, "date": item.study_date.isoformat(), "content": item.content,
+            "createdAt": as_utc(item.created_at).isoformat().replace("+00:00", "Z"),
+            "updatedAt": as_utc(item.updated_at).isoformat().replace("+00:00", "Z"),
+            "project": project_dict(project) if project else None}
+
+
+def knowledge_month_bounds(raw_month):
+    if not re.fullmatch(r"\d{4}-\d{2}", str(raw_month or "")):
+        raise ValueError("月份无效")
+    year, month = map(int, str(raw_month).split("-"))
+    if month < 1 or month > 12:
+        raise ValueError("月份无效")
+    start = date(year, month, 1)
+    end = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    return start, end
+
+
+def normalized_knowledge_content(raw):
+    content = str(raw or "").strip()
+    if not content or len(content) > 2000:
+        raise ValueError("知识点内容需为 1–2000 个字符")
+    return content
 
 
 def create_defaults(user_id):
@@ -584,9 +621,18 @@ def build_bundle(user_id):
             "startedAt": int(as_utc(item.started_at).timestamp() * 1000), "endedAt": int(as_utc(item.ended_at).timestamp() * 1000),
             "durationSec": item.duration_seconds, "durationMin": round(item.duration_seconds / 60),
             "subject": project.external_id if project else None, "energy": item.energy})
+    knowledge_points = []
+    for item in db.session.scalars(db.select(KnowledgePoint).where(
+            KnowledgePoint.user_id == user_id).order_by(KnowledgePoint.study_date, KnowledgePoint.created_at)):
+        project = project_by_id.get(item.project_id)
+        if project:
+            knowledge_points.append({"date": item.study_date.isoformat(), "projectId": project.external_id,
+                "content": item.content,
+                "createdAt": as_utc(item.created_at).isoformat().replace("+00:00", "Z"),
+                "updatedAt": as_utc(item.updated_at).isoformat().replace("+00:00", "Z")})
     bundle = {"format": "kaoyan-study-backup", "version": 1, "exportedAt": datetime.now(UTC).isoformat(),
               "study": study, "sessions": sessions, "milestones": milestones,
-              "projects": [project_dict(item) for item in projects]}
+              "projects": [project_dict(item) for item in projects], "knowledgePoints": knowledge_points}
     profile = db.session.get(PokemonProfile, user_id)
     if profile:
         pokemon = pokemon_state_dict(profile)
@@ -776,6 +822,21 @@ def validate_bundle(payload):
         raise ValueError("备份数据不完整")
     if payload.get("projects") is not None and not isinstance(payload["projects"], list):
         raise ValueError("项目配置无效")
+    knowledge_points = payload.get("knowledgePoints")
+    if knowledge_points is not None:
+        if not isinstance(knowledge_points, list) or len(knowledge_points) > 100000:
+            raise ValueError("知识点备份数据无效")
+        for item in knowledge_points:
+            if not isinstance(item, dict):
+                raise ValueError("知识点备份数据无效")
+            try:
+                date.fromisoformat(str(item.get("date") or ""))
+                normalized_knowledge_content(item.get("content"))
+            except (TypeError, ValueError):
+                raise ValueError("知识点备份数据无效")
+            project_id = str(item.get("projectId") or "")
+            if not PROJECT_ID_RE.fullmatch(project_id):
+                raise ValueError("知识点项目无效")
     if payload.get("pokemon") is not None and not isinstance(payload["pokemon"], dict):
         raise ValueError("宝可梦存档无效")
 
@@ -907,6 +968,16 @@ def replace_pokemon_data(user_id, payload):
 
 def replace_user_data(user_id, payload):
     validate_bundle(payload)
+    knowledge_items = payload.get("knowledgePoints")
+    if knowledge_items is None:
+        knowledge_items = []
+        rows = db.session.execute(db.select(KnowledgePoint, Project).join(
+            Project, Project.id == KnowledgePoint.project_id).where(KnowledgePoint.user_id == user_id))
+        for item, project in rows:
+            knowledge_items.append({"date": item.study_date.isoformat(), "projectId": project.external_id,
+                "content": item.content, "createdAt": item.created_at.isoformat(),
+                "updatedAt": item.updated_at.isoformat(), "_project": project_dict(project)})
+    db.session.query(KnowledgePoint).filter_by(user_id=user_id).delete()
     db.session.query(DailyStudy).filter_by(user_id=user_id).delete()
     db.session.query(DailyMeta).filter_by(user_id=user_id).delete()
     db.session.query(StudySession).filter_by(user_id=user_id).delete()
@@ -974,6 +1045,35 @@ def replace_user_data(user_id, payload):
                     float(raw.get("durationMin") or 0) * 60)), energy=int(raw["energy"]) if raw.get("energy") is not None else None))
         except (TypeError, ValueError, OSError):
             continue
+    for raw in knowledge_items:
+        external_id = str(raw.get("projectId") or "")
+        project = project_map.get(external_id)
+        if not project and PROJECT_ID_RE.fullmatch(external_id):
+            saved_project = raw.get("_project") if isinstance(raw.get("_project"), dict) else {}
+            project = Project(user_id=user_id, external_id=external_id,
+                name=str(saved_project.get("name") or external_id)[:20],
+                color=str(saved_project.get("color") or "#4f8cf7")
+                    if re.fullmatch(r"#[0-9a-fA-F]{6}", str(saved_project.get("color") or "")) else "#4f8cf7",
+                icon=str(saved_project.get("icon") or "📚")[:8], archived=bool(saved_project.get("archived")))
+            db.session.add(project); db.session.flush(); project_map[external_id] = project
+        if not project:
+            continue
+        try:
+            item_date = date.fromisoformat(str(raw.get("date") or ""))
+            content = normalized_knowledge_content(raw.get("content"))
+        except (TypeError, ValueError):
+            continue
+        created_at = updated_at = utcnow()
+        try:
+            created_at = as_utc(datetime.fromisoformat(str(raw.get("createdAt") or "").replace("Z", "+00:00"))).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            pass
+        try:
+            updated_at = as_utc(datetime.fromisoformat(str(raw.get("updatedAt") or "").replace("Z", "+00:00"))).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            updated_at = created_at
+        db.session.add(KnowledgePoint(user_id=user_id, project_id=project.id, study_date=item_date,
+                                      content=content, created_at=created_at, updated_at=updated_at))
     replace_pokemon_data(user_id, payload)
 
 
@@ -1425,6 +1525,140 @@ def register_api_routes(app):
         if "energy" in body: meta.energy = max(0, min(100, int(body["energy"])))
         if "notes" in body: meta.notes = str(body["notes"])[:10000]
         db.session.commit(); return api_ok({"date": study_date, "energy": meta.energy, "notes": meta.notes})
+
+    @app.get("/api/knowledge-points")
+    @login_required
+    def knowledge_points_list():
+        raw_date = request.args.get("date", "").strip()
+        raw_month = request.args.get("month", "").strip()
+        if raw_date and raw_month:
+            return api_error("日期和月份不能同时使用")
+        try:
+            if raw_date:
+                start_date = date.fromisoformat(raw_date)
+                end_date = start_date + timedelta(days=1)
+            else:
+                raw_month = raw_month or datetime.now(APP_TZ).strftime("%Y-%m")
+                start_date, end_date = knowledge_month_bounds(raw_month)
+        except (TypeError, ValueError):
+            return api_error("日期或月份无效")
+        project_id = request.args.get("projectId", "all").strip()
+        project = None
+        if project_id != "all":
+            project = get_project(current_user.id, project_id)
+            if not project:
+                return api_error("项目不存在")
+        keyword = request.args.get("q", "").strip()
+        if len(keyword) > 100:
+            return api_error("搜索关键词不能超过 100 个字符")
+        try:
+            page = int(request.args.get("page", 1))
+        except (TypeError, ValueError):
+            return api_error("页码无效")
+        if page < 1:
+            return api_error("页码无效")
+        filters = [KnowledgePoint.user_id == current_user.id,
+                   KnowledgePoint.study_date >= start_date, KnowledgePoint.study_date < end_date]
+        if project:
+            filters.append(KnowledgePoint.project_id == project.id)
+        if keyword:
+            filters.append(KnowledgePoint.content.contains(keyword))
+        total = db.session.scalar(db.select(func.count()).select_from(KnowledgePoint).where(*filters)) or 0
+        page_size = 50
+        rows = db.session.execute(db.select(KnowledgePoint, Project).join(
+            Project, Project.id == KnowledgePoint.project_id).where(*filters).order_by(
+                KnowledgePoint.study_date.desc(), Project.name.asc(),
+                KnowledgePoint.created_at.desc(), KnowledgePoint.id.desc()
+            ).offset((page - 1) * page_size).limit(page_size)).all()
+        response = jsonify({"ok": True, "data": {
+            "items": [knowledge_point_dict(item, item_project) for item, item_project in rows],
+            "page": page, "pageSize": page_size, "total": int(total),
+            "hasMore": page * page_size < total,
+            "date": raw_date or None, "month": None if raw_date else raw_month,
+        }})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/api/knowledge-points/calendar")
+    @login_required
+    def knowledge_points_calendar():
+        raw_month = request.args.get("month", "").strip() or datetime.now(APP_TZ).strftime("%Y-%m")
+        try:
+            start_date, end_date = knowledge_month_bounds(raw_month)
+        except ValueError:
+            return api_error("月份无效")
+        rows = db.session.execute(db.select(KnowledgePoint.study_date, func.count()).where(
+            KnowledgePoint.user_id == current_user.id, KnowledgePoint.study_date >= start_date,
+            KnowledgePoint.study_date < end_date).group_by(KnowledgePoint.study_date))
+        response = jsonify({"ok": True, "data": {"month": raw_month,
+            "counts": {study_date.isoformat(): int(count) for study_date, count in rows}}})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.post("/api/knowledge-points")
+    @login_required
+    def knowledge_point_add():
+        body = parse_json_body()
+        try:
+            study_date = date.fromisoformat(str(body.get("date") or datetime.now(APP_TZ).date()))
+        except (TypeError, ValueError):
+            return api_error("日期无效")
+        try:
+            content = normalized_knowledge_content(body.get("content"))
+        except ValueError as error:
+            return api_error(str(error))
+        if study_date > datetime.now(APP_TZ).date():
+            return api_error("不能记录未来日期的知识点")
+        project = get_project(current_user.id, str(body.get("projectId") or ""))
+        if not project:
+            return api_error("项目不存在")
+        if project.archived:
+            return api_error("不能为已归档项目新增知识点")
+        item = KnowledgePoint(user_id=current_user.id, project_id=project.id,
+                              study_date=study_date, content=content)
+        db.session.add(item); db.session.commit()
+        return api_ok(knowledge_point_dict(item, project), 201)
+
+    @app.patch("/api/knowledge-points/<int:item_id>")
+    @login_required
+    def knowledge_point_edit(item_id):
+        item = db.session.scalar(db.select(KnowledgePoint).where(
+            KnowledgePoint.id == item_id, KnowledgePoint.user_id == current_user.id))
+        if not item:
+            return api_error("知识点不存在", 404)
+        body = parse_json_body()
+        if "date" in body:
+            try:
+                study_date = date.fromisoformat(str(body.get("date") or ""))
+            except (TypeError, ValueError):
+                return api_error("日期无效")
+            if study_date > datetime.now(APP_TZ).date():
+                return api_error("不能记录未来日期的知识点")
+            item.study_date = study_date
+        if "content" in body:
+            try:
+                item.content = normalized_knowledge_content(body.get("content"))
+            except ValueError as error:
+                return api_error(str(error))
+        if "projectId" in body:
+            project = get_project(current_user.id, str(body.get("projectId") or ""))
+            if not project:
+                return api_error("项目不存在")
+            if project.archived and project.id != item.project_id:
+                return api_error("不能改为已归档项目")
+            item.project_id = project.id
+        db.session.commit()
+        return api_ok(knowledge_point_dict(item))
+
+    @app.delete("/api/knowledge-points/<int:item_id>")
+    @login_required
+    def knowledge_point_delete(item_id):
+        item = db.session.scalar(db.select(KnowledgePoint).where(
+            KnowledgePoint.id == item_id, KnowledgePoint.user_id == current_user.id))
+        if not item:
+            return api_error("知识点不存在", 404)
+        db.session.delete(item); db.session.commit()
+        return api_ok(None)
 
     @app.get("/api/friends/search")
     @login_required

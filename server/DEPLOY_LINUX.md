@@ -142,6 +142,8 @@ sudo -u kaoyan bash -c 'cd /opt/kaoyan/server && .venv/bin/flask --app app:app c
 
 双版本与宝可梦养成功能也通过 `init-db` 幂等增加用户版本偏好和养成数据表。升级前已有学习会话不会补发经验；部署完成后新结算的服务器计时才会产生经验。
 
+知识库功能同样通过 `init-db` 新建独立知识点表，不会重建或清空现有账号、学习时长、好友和宝可梦数据。
+
 确认数据库已生成且归属正确：
 
 ```bash
@@ -320,7 +322,7 @@ sudo systemctl start kaoyan.service
 sudo systemctl status kaoyan.service --no-pager
 ```
 
-趋势页只增加只读聚合接口和静态资源，不修改数据库结构，也没有新增 Python 依赖。它与现有统计页一样从 jsDelivr 加载固定版本的图表库，因此无需调整 Nginx、80/443 端口或 systemd 配置。
+知识库版本没有新增 Python 依赖，但新增了一张数据表，因此更新代码后必须执行上面的 `init-db` 再启动服务。无需调整 Nginx、80/443 端口或 systemd 配置；上线前仍应先运行数据库备份。
 
 当前版本使用 `db.create_all()` 初始化新表。将来如果修改已有表字段，应先加入数据库迁移工具和迁移脚本，不要直接删除生产数据库重建。
 

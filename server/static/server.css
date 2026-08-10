@@ -534,6 +534,262 @@ textarea {
     line-height: 1.65;
 }
 
+.knowledge-quick-card {
+    overflow: hidden;
+}
+
+.knowledge-quick-form {
+    display: grid;
+    grid-template-columns: minmax(140px, .7fr) minmax(180px, 1fr);
+    gap: 9px;
+}
+
+.knowledge-quick-form textarea {
+    min-height: 78px;
+    grid-column: 1 / -1;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.knowledge-quick-form button {
+    grid-column: 1 / -1;
+    justify-self: end;
+}
+
+.today-knowledge {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
+}
+
+.today-knowledge-head,
+.knowledge-day-head,
+.knowledge-item-actions,
+.knowledge-exact-filter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.today-knowledge-head {
+    margin-bottom: 8px;
+    color: var(--text2);
+    font-size: .68rem;
+}
+
+.today-knowledge-head button,
+.knowledge-item-actions button,
+.knowledge-exact-filter button {
+    min-height: 28px;
+    padding: 3px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: .6rem;
+}
+
+.knowledge-project-group {
+    margin-top: 9px;
+    padding: 10px 11px 5px;
+    border: 1px solid color-mix(in srgb, var(--project-color) 18%, var(--border-light));
+    border-left: 3px solid var(--project-color);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--project-color) 3%, #fff);
+}
+
+.knowledge-project-group h4 {
+    display: flex;
+    margin: 0 0 6px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text2);
+    font-size: .7rem;
+}
+
+.knowledge-project-group h4 span {
+    color: var(--text3);
+    font-size: .55rem;
+    font-weight: 600;
+}
+
+.knowledge-item {
+    padding: 8px 3px;
+}
+
+.knowledge-item + .knowledge-item {
+    border-top: 1px dashed var(--border-light);
+}
+
+.knowledge-item p {
+    margin: 0;
+    color: var(--text);
+    font-size: .72rem;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.knowledge-item-actions {
+    margin-top: 4px;
+    justify-content: flex-end;
+}
+
+.knowledge-item-actions time {
+    margin-right: auto;
+    color: var(--text3);
+    font-size: .52rem;
+}
+
+.knowledge-item-actions .danger-text {
+    color: var(--danger);
+}
+
+.knowledge-hero {
+    display: flex;
+    margin-bottom: 13px;
+    padding: 12px 4px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.knowledge-hero h2,
+.knowledge-hero p {
+    margin: 0;
+}
+
+.knowledge-hero h2 {
+    margin-top: 2px;
+    font-size: 1.32rem;
+}
+
+.knowledge-hero p {
+    margin-top: 3px;
+    color: var(--text3);
+    font-size: .7rem;
+}
+
+.knowledge-filters {
+    display: grid;
+    grid-template-columns: minmax(140px, .7fr) minmax(180px, 1fr) minmax(220px, 1.35fr);
+    gap: 10px;
+}
+
+.knowledge-filters label,
+.knowledge-dialog-form label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+    color: var(--text3);
+    font-size: .6rem;
+    font-weight: 650;
+}
+
+.knowledge-exact-filter {
+    margin-top: 10px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: .64rem;
+}
+
+.knowledge-summary {
+    margin: 2px 3px 9px;
+    color: var(--text3);
+    font-size: .65rem;
+}
+
+.knowledge-day {
+    margin-bottom: 14px;
+}
+
+.knowledge-day-head {
+    margin: 0 3px 7px;
+}
+
+.knowledge-day-head time {
+    color: var(--text);
+    font-size: .82rem;
+    font-weight: 800;
+}
+
+.knowledge-day-head span {
+    color: var(--text3);
+    font-size: .6rem;
+}
+
+.knowledge-day-projects {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px;
+}
+
+.knowledge-day-projects .knowledge-project-group {
+    margin: 0;
+    box-shadow: var(--shadow-sm);
+}
+
+.knowledge-empty {
+    padding: 48px 20px;
+    border: 1px dashed #ccd7e2;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, .55);
+    color: var(--text3);
+    text-align: center;
+}
+
+.knowledge-empty.compact {
+    padding: 17px 10px;
+    border: 0;
+    background: #fafbfc;
+    font-size: .65rem;
+}
+
+.knowledge-empty > span {
+    font-size: 2rem;
+}
+
+.knowledge-empty h3,
+.knowledge-empty p {
+    margin: 4px 0;
+}
+
+.knowledge-empty h3 {
+    color: var(--text);
+    font-size: .88rem;
+}
+
+.knowledge-empty p {
+    font-size: .66rem;
+}
+
+.knowledge-load-wrap {
+    text-align: center;
+}
+
+.knowledge-dialog {
+    width: min(92vw, 580px);
+}
+
+.knowledge-dialog-form {
+    display: grid;
+    gap: 11px;
+}
+
+.knowledge-dialog-form textarea {
+    line-height: 1.65;
+    resize: vertical;
+}
+
+.knowledge-dialog-form button {
+    justify-self: end;
+}
+
 .timer-card {
     position: relative;
     overflow: hidden;
@@ -851,12 +1107,29 @@ textarea {
     font-weight: 700;
 }
 
+.calendar .day.has-knowledge {
+    cursor: pointer;
+}
+
+.calendar .day em {
+    display: block;
+    margin-top: 2px;
+    color: #9a63c7;
+    font-size: .5rem;
+    font-style: normal;
+    font-weight: 750;
+}
+
 .calendar .heat-dark {
     color: #fff;
     text-shadow: 0 1px 2px rgba(26, 35, 50, .16);
 }
 
 .calendar .heat-dark small {
+    color: #fff;
+}
+
+.calendar .heat-dark em {
     color: #fff;
 }
 
@@ -1984,12 +2257,40 @@ dialog::backdrop {
         height: 245px;
     }
 
+    .knowledge-quick-form,
+    .knowledge-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .knowledge-quick-form textarea,
+    .knowledge-quick-form button {
+        grid-column: auto;
+    }
+
+    .knowledge-quick-form button {
+        width: 100%;
+        justify-self: stretch;
+    }
+
+    .knowledge-hero {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .knowledge-hero button {
+        width: 100%;
+    }
+
+    .knowledge-day-projects {
+        grid-template-columns: 1fr;
+    }
+
     .calendar {
         gap: 3px;
     }
 
     .calendar .day {
-        min-height: 55px;
+        min-height: 62px;
         padding: 4px;
         border-radius: 7px;
         font-size: .7rem;

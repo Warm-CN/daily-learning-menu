@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% block title %}{{ '宝可梦养成' if pokemon_mode else '学习看板' }}{% endblock %}
 {% block head %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>{% if pokemon_mode %}<link rel="stylesheet" href="{{ url_for('static', filename='pokemon.css', v='20260724-1') }}">{% endif %}{% endblock %}
 {% block content %}
-<div class="view-tabs" role="tablist" aria-label="看板视图"><button class="active" data-view="home">首页</button><button data-view="timer">计时</button><button data-view="stats">统计</button><button data-view="calendar">日历</button></div>
+<div class="view-tabs" role="tablist" aria-label="看板视图"><button class="active" data-view="home">首页</button><button data-view="timer">计时</button><button data-view="stats">统计</button><button data-view="calendar">日历</button><button data-view="knowledge">知识库</button></div>
 {% if pokemon_mode %}
 <section id="view-home" class="view active pokemon-home">
   <div class="pokemon-hero"><div><span class="pokemon-kicker">STUDY TRAINER</span><h1>和伙伴一起，把专注练成超能力</h1><div id="homeDate" class="home-date"></div></div><div class="trainer-chip">训练师 · {{ current_user.username }}</div></div>
@@ -26,6 +26,7 @@
     <div class="card"><div class="card-title">⚡ 今日精力评分</div><div class="energy-control"><input id="energy" type="range" min="0" max="100"><strong id="energyValue" class="energy-score">0</strong></div></div>
     <div class="card"><div class="card-title">📝 今日学习记录</div><textarea id="notes" class="notes-area" rows="4" placeholder="记录今天的学习内容、收获和反思"></textarea><div class="card-actions"><button id="saveNotes" class="primary">保存记录</button></div></div>
   </div>
+  <div class="card knowledge-quick-card"><div class="card-title">💡 今日知识点 <span class="badge">逐条记录今天的收获</span></div><div class="knowledge-quick-form"><input id="knowledgeDate" type="date" aria-label="知识点日期"><select id="knowledgeProject" aria-label="知识点学科"></select><textarea id="knowledgeContent" rows="3" maxlength="2000" placeholder="写下刚刚掌握的概念、方法或易错点…"></textarea><button id="saveKnowledge" class="primary">保存知识点</button></div><div id="todayKnowledge" class="today-knowledge"></div></div>
 </section>
 {% else %}
 <section id="view-home" class="view active">
@@ -33,6 +34,7 @@
   <div id="todayCards" class="stats-row"></div>
   <div class="card"><div class="card-title">⚡ 今日精力评分</div><div class="energy-control"><input id="energy" type="range" min="0" max="100"><strong id="energyValue" class="energy-score">0</strong></div></div>
   <div class="card"><div class="card-title">📝 今日学习记录</div><textarea id="notes" class="notes-area" rows="4" placeholder="记录今天的学习内容、收获和反思"></textarea><div class="card-actions"><button id="saveNotes" class="primary">保存记录</button></div></div>
+  <div class="card knowledge-quick-card"><div class="card-title">💡 今日知识点 <span class="badge">逐条记录今天的收获</span></div><div class="knowledge-quick-form"><input id="knowledgeDate" type="date" aria-label="知识点日期"><select id="knowledgeProject" aria-label="知识点学科"></select><textarea id="knowledgeContent" rows="3" maxlength="2000" placeholder="写下刚刚掌握的概念、方法或易错点…"></textarea><button id="saveKnowledge" class="primary">保存知识点</button></div><div id="todayKnowledge" class="today-knowledge"></div></div>
 </section>
 {% endif %}
 <section id="view-timer" class="view"><div class="card timer-card">
@@ -52,9 +54,17 @@
  <div class="data-actions"><a class="button-link" href="/api/data/export">导出备份</a><label class="button-link">导入备份<input id="importFile" type="file" accept=".json,application/json" hidden></label><button id="restoreBackup">恢复导入前数据</button></div>
 </section>
 <section id="view-calendar" class="view"><div class="card"><div class="calendar-head"><button id="prevMonth" aria-label="上个月">◀</button><h3 id="monthLabel"></h3><button id="nextMonth" aria-label="下个月">▶</button></div><div id="calendar" class="calendar"></div><div class="heat-legend" aria-label="学习时长颜色图例"><span>学习时长</span><em>少</em><i style="--heat:.12"></i><i style="--heat:.28"></i><i style="--heat:.45"></i><i style="--heat:.63"></i><i style="--heat:.82"></i><em>多</em></div></div></section>
+<section id="view-knowledge" class="view">
+  <div class="knowledge-hero"><div><span class="eyebrow">KNOWLEDGE HARVEST</span><h2>我的知识库</h2><p>按日期与学科整理每一次真实收获。</p></div><button id="newKnowledge" class="primary">＋ 新增知识点</button></div>
+  <div class="card knowledge-filter-card"><div class="knowledge-filters"><label>月份<input id="knowledgeMonth" type="month"></label><label>学科<select id="knowledgeFilterProject"></select></label><label class="knowledge-search">关键词<input id="knowledgeQuery" type="search" maxlength="100" placeholder="搜索知识点内容"></label></div><div id="knowledgeExactFilter" class="knowledge-exact-filter" hidden><span></span><button id="clearKnowledgeDate" type="button">查看整月</button></div></div>
+  <div id="knowledgeSummary" class="knowledge-summary"></div>
+  <div id="knowledgeArchive" class="knowledge-archive"></div>
+  <div class="knowledge-load-wrap"><button id="loadMoreKnowledge" type="button" hidden>加载更多</button></div>
+</section>
 
 <dialog id="projectDialog"><form method="dialog"><div class="dialog-head"><div><h3>管理项目</h3><p class="muted">自定义科目名称、图标与颜色</p></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div></form><div id="projectRows"></div>
  <div class="inline wrap project-add"><input id="newIcon" value="📚" maxlength="4" class="icon-input"><input id="newName" placeholder="新项目名称" maxlength="20"><input id="newColor" type="color" value="#4f8cf7"><button id="addProject" class="primary">添加</button></div></dialog>
 <div class="foot-bar"><span>今日：<strong id="footToday">0h</strong></span><span>本周：<strong id="footWeek">0h</strong></span></div>
+<dialog id="knowledgeDialog" class="knowledge-dialog"><form method="dialog"><div class="dialog-head"><div><h3 id="knowledgeDialogTitle">新增知识点</h3><p class="muted">每条内容绑定一个日期和学科</p></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div></form><div class="knowledge-dialog-form"><label>日期<input id="editKnowledgeDate" type="date"></label><label>学科<select id="editKnowledgeProject"></select></label><label>知识点<textarea id="editKnowledgeContent" rows="7" maxlength="2000"></textarea></label><button id="submitKnowledge" class="primary">保存</button></div></dialog>
 {% endblock %}
-{% block scripts %}{% if pokemon_mode %}<script src="{{ url_for('static', filename='pokemon-data.js', v='20260724-1') }}"></script><script src="{{ url_for('static', filename='pokemon.js', v='20260724-1') }}"></script>{% endif %}<script src="{{ url_for('static', filename='dashboard.js', v='20260724-2') }}"></script>{% endblock %}
+{% block scripts %}{% if pokemon_mode %}<script src="{{ url_for('static', filename='pokemon-data.js', v='20260724-1') }}"></script><script src="{{ url_for('static', filename='pokemon.js', v='20260724-1') }}"></script>{% endif %}<script src="{{ url_for('static', filename='dashboard.js', v='20260810-knowledge1') }}"></script>{% endblock %}
