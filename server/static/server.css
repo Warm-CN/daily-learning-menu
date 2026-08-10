@@ -102,7 +102,8 @@ button:active,
 button:focus-visible,
 .button-link:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
     outline: 3px solid rgba(79, 140, 247, .2);
     outline-offset: 2px;
 }
@@ -138,7 +139,9 @@ button.primary:hover,
 }
 
 input,
-textarea {
+textarea,
+select {
+    min-height: 42px;
     border: 1.5px solid var(--border);
     border-radius: var(--radius-xs);
     padding: 10px 12px;
@@ -148,11 +151,29 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
     border-color: var(--accent);
     outline: 0;
     background: #fff;
     box-shadow: 0 0 0 4px rgba(79, 140, 247, .08);
+}
+
+select {
+    width: 100%;
+    padding-right: 38px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.25 6 6.25 11 1.25' fill='none' stroke='%235a6d7e' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 13px center;
+    background-size: 12px 8px;
+    cursor: pointer;
+}
+
+select:disabled {
+    cursor: not-allowed;
+    opacity: .6;
 }
 
 input[type="range"] {

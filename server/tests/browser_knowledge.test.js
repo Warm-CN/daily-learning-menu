@@ -26,10 +26,15 @@ class CdpClient {
 
         await browser.evaluate("document.querySelector('[data-view=knowledge]').click()");
         await browser.waitFor("document.getElementById('view-knowledge').classList.contains('active') && document.querySelector('#knowledgeArchive .knowledge-item')");
+        const filterControls=await browser.evaluate("['knowledgeMonth','knowledgeFilterProject','knowledgeQuery'].map(id=>{const element=document.getElementById(id),rect=element.getBoundingClientRect(),style=getComputedStyle(element);return {id,height:rect.height,borderRadius:style.borderRadius,borderWidth:style.borderTopWidth,backgroundImage:style.backgroundImage}})");
+        assert.ok(filterControls.every(item=>Math.abs(item.height-filterControls[0].height)<1),`筛选控件高度应一致：${JSON.stringify(filterControls)}`);
+        assert.equal(filterControls[1].borderRadius,filterControls[0].borderRadius);assert.equal(filterControls[1].borderWidth,filterControls[0].borderWidth);assert.notEqual(filterControls[1].backgroundImage,'none');
         await browser.evaluate("document.getElementById('knowledgeQuery').value='检查单调性';document.getElementById('knowledgeQuery').dispatchEvent(new Event('input'))");
         await browser.waitFor("document.getElementById('knowledgeSummary').textContent.includes('1 条')");
         await browser.evaluate("document.querySelector('#knowledgeArchive [data-edit-knowledge]').click()");
         await browser.waitFor("document.getElementById('knowledgeDialog').open");
+        const dialogControls=await browser.evaluate("['editKnowledgeDate','editKnowledgeProject'].map(id=>document.getElementById(id).getBoundingClientRect().height)");
+        assert.ok(Math.abs(dialogControls[0]-dialogControls[1])<1,`弹窗日期和学科控件高度应一致：${dialogControls}`);
         await browser.evaluate("document.getElementById('editKnowledgeContent').value='极值点需要结合导数变号判断';document.getElementById('submitKnowledge').click()");
         await browser.waitFor("document.querySelector('#todayKnowledge .knowledge-item')?.textContent.includes('导数变号')");
         console.log('knowledge e2e: search and edit ready');
