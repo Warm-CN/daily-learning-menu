@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+import app as app_module
 from app import APP_TZ, UTC, ActiveTimer, DailyStudy, Project, StudySession, User, db
 from conftest import register
 
@@ -66,9 +67,10 @@ def test_manual_only_volume_does_not_create_candle(app, client):
     assert candle["openSeconds"] is None
 
 
-def test_intraday_returns_live_timer_and_completed_curve(app, client):
+def test_intraday_returns_live_timer_and_completed_curve(app, client, monkeypatch):
     register(client, "trend_live")
     today = datetime.now(APP_TZ).date()
+    monkeypatch.setattr(app_module, "utcnow", lambda: utc_naive(today, 12))
     math_id = project(app, 1, "math")
     with app.app_context():
         add_session(1, math_id, utc_naive(today, 8), 900)
@@ -87,9 +89,10 @@ def test_intraday_returns_live_timer_and_completed_curve(app, client):
     assert data["activeTimer"]["elapsedSeconds"] >= 74
 
 
-def test_intraday_immediately_includes_expired_countdown(app, client):
+def test_intraday_immediately_includes_expired_countdown(app, client, monkeypatch):
     register(client, "trend_countdown")
     today = datetime.now(APP_TZ).date()
+    monkeypatch.setattr(app_module, "utcnow", lambda: utc_naive(today, 12))
     started = payload(client.post("/api/timer/start", json={"projectId": "math", "mode": "countdown",
                                                              "targetSeconds": 60}))
     with app.app_context():

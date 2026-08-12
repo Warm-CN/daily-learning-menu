@@ -1,6 +1,7 @@
 let state={projects:[],study:{},sessions:[],milestones:{},timer:null};
 let selectedProject=null,selectedMode='countup',weekChart=null,pieChart=null,todayChart=null,calendarDate=new Date(),timerTick=null,timerSync=null,finishing=false;
 let todayKnowledgeItems=[],knowledgeArchiveItems=[],knowledgePage=1,knowledgeHasMore=false,knowledgeExactDate=null,calendarKnowledgeCounts={},knowledgeSearchTimer=null;
+let countdownRolloverTimer=null;
 const VIEW_STORAGE_KEY='kaoyan_dashboard_view';
 const PROJECT_STORAGE_KEY='kaoyan_selected_project';
 const $=id=>document.getElementById(id);
@@ -13,6 +14,58 @@ function calendarHeat(seconds){if(!seconds)return {alpha:0,dark:false};const hou
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function readStorage(storage,key){try{return storage.getItem(key)}catch{return null}}
 function writeStorage(storage,key,value){try{storage.setItem(key,value)}catch{}}
+
+function calendarDayNumber(value){const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value||''));return match?Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])):NaN}
+function countdownDaysFromToday(targetDate){return Math.round((calendarDayNumber(targetDate)-calendarDayNumber(chinaDate()))/86400000)}
+function countdownDateLabel(targetDate){return new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'long',day:'numeric',weekday:'long'}).format(new Date(`${targetDate}T00:00:00+08:00`))}
+function countdownStatus(targetDate){
+    const days=countdownDaysFromToday(targetDate);
+    if(days>0)return {className:'upcoming',days,label:`还剩 ${days} 天`,amount:String(days),unit:'天'};
+    if(days===0)return {className:'today',days,label:'就是今天',amount:'今天',unit:''};
+    return {className:'elapsed',days,label:`已过去 ${Math.abs(days)} 天`,amount:String(Math.abs(days)),unit:'天'};
+}
+function bindCountdownControls(){
+    $('openCountdown')?.addEventListener('click',openCountdownDialog);
+    $('editCountdown')?.addEventListener('click',openCountdownDialog);
+}
+function renderCountdown(){
+    const root=$('countdownBanner');if(!root)return;
+    const countdown=state.countdown;
+    if(!countdown?.date||!Number.isFinite(calendarDayNumber(countdown.date))){
+        root.className='countdown-banner is-empty';
+        root.innerHTML='<button id="openCountdown" type="button" class="countdown-empty-action"><span class="countdown-empty-icon">🎯</span><span><strong>设置目标日</strong><small>给未来的自己定一个清晰目标</small></span><em>＋ 设置</em></button>';
+        bindCountdownControls();
+        return;
+    }
+    const status=countdownStatus(countdown.date),name=String(countdown.name||'考研初试').trim()||'考研初试';
+    root.className=`countdown-banner is-set ${status.className}`;
+    root.innerHTML=`<div class="countdown-copy"><span class="countdown-kicker">🎯 目标日期</span><h2>${escapeHtml(name)}</h2><p>目标日 · ${escapeHtml(countdownDateLabel(countdown.date))}</p></div><div class="countdown-remaining" aria-label="${escapeHtml(status.label)}"><span>${status.label}</span><div><strong>${status.amount}</strong>${status.unit?`<em>${status.unit}</em>`:''}</div></div><button id="editCountdown" type="button" class="countdown-edit" aria-label="编辑目标日">编辑</button>`;
+    bindCountdownControls();
+}
+function scheduleCountdownRerender(){
+    clearTimeout(countdownRolloverTimer);
+    const today=chinaDate(),dayNumber=calendarDayNumber(today),nextMidnight=dayNumber+86400000-(8*3600000);
+    const delay=Math.max(1000,nextMidnight-Date.now()+1000);
+    countdownRolloverTimer=setTimeout(()=>{renderCountdown();scheduleCountdownRerender()},delay);
+}
+function openCountdownDialog(){
+    const dialog=$('countdownDialog');if(!dialog)return;
+    const countdown=state.countdown||{};
+    $('countdownName').value=countdown.name||'考研初试';
+    $('countdownDate').value=countdown.date||'';
+    $('clearCountdown').hidden=!countdown.date;
+    if(!dialog.open)dialog.showModal();
+    requestAnimationFrame(()=>$('countdownDate').focus());
+}
+async function saveCountdown(){
+    const name=$('countdownName').value.trim(),targetDate=$('countdownDate').value;
+    if(!name){toast('请填写目标名称');$('countdownName').focus();return}
+    if(!targetDate){toast('请选择目标日期');$('countdownDate').focus();return}
+    try{state.countdown=await apiFetch('/api/preferences/countdown',{method:'PATCH',body:{name,date:targetDate}});$('countdownDialog').close();renderCountdown();scheduleCountdownRerender();toast('目标日已保存')}catch(error){toast(error.message)}
+}
+async function clearCountdown(){
+    try{await apiFetch('/api/preferences/countdown',{method:'PATCH',body:{date:null}});state.countdown=null;$('countdownDialog').close();renderCountdown();toast('目标日已清除')}catch(error){toast(error.message)}
+}
 
 function projectOptions(projects,selected){return projects.map(project=>`<option value="${escapeHtml(project.id)}"${project.id===selected?' selected':''}>${escapeHtml(project.icon)} ${escapeHtml(project.name)}${project.archived?'（已归档）':''}</option>`).join('')}
 function renderKnowledgeInputs(){
@@ -87,7 +140,7 @@ async function loadData(){
     const initialView=state.timer?'timer':['home','timer','stats','calendar','knowledge'].includes(storedView)?storedView:'home';
     switchView(initialView);
 }
-function renderAll(){renderHome();renderKnowledgeInputs();renderProjectPicker();renderTimer();renderStats();renderCalendar();renderProjectDialog();updateFooter();updateTodaySummary()}
+function renderAll(){renderHome();renderCountdown();renderKnowledgeInputs();renderProjectPicker();renderTimer();renderStats();renderCalendar();renderProjectDialog();updateFooter();updateTodaySummary();scheduleCountdownRerender()}
 function renderHome(){const key=chinaDate(),day=state.study[key]||{},total=dayTotal(day),energy=day.energy||0;$('homeDate').textContent=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'long',day:'numeric',weekday:'long'}).format(new Date());$('todayCards').innerHTML=`<div class="stat-card total" style="--color:#ff6b5e"><strong>${formatHours(total)}</strong><span>📅 今日总时长</span></div>`+activeProjects().map(p=>`<div class="stat-card" style="--color:${p.color}"><strong>${formatHours(day[p.id]||0)}</strong><span>${escapeHtml(p.icon)} ${escapeHtml(p.name)}</span></div>`).join('');$('energy').value=energy;$('energyValue').textContent=energy;$('energyValue').style.background=`conic-gradient(var(--accent) 0 ${energy}%,#e7edf4 ${energy}% 100%)`;$('notes').value=day.notes||''}
 function updateFooter(){const today=chinaDate(),parts=today.split('-').map(Number),cursor=new Date(Date.UTC(parts[0],parts[1]-1,parts[2])),weekday=cursor.getUTCDay()||7;let week=0;for(let offset=weekday-1;offset>=0;offset--){const day=new Date(cursor);day.setUTCDate(day.getUTCDate()-offset);const key=`${day.getUTCFullYear()}-${String(day.getUTCMonth()+1).padStart(2,'0')}-${String(day.getUTCDate()).padStart(2,'0')}`;week+=dayTotal(state.study[key]||{})}$('footToday').textContent=formatHours(dayTotal(state.study[today]||{}));$('footWeek').textContent=formatHours(week)}
 function renderProjectPicker(){$('projectPicker').innerHTML=activeProjects().map(p=>`<button class="project-pill ${p.id===selectedProject?'active':''}" style="--color:${p.color}" data-project="${p.id}">${escapeHtml(p.icon)} ${escapeHtml(p.name)}</button>`).join('');document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{if(state.timer)return;selectedProject=button.dataset.project;writeStorage(localStorage,PROJECT_STORAGE_KEY,selectedProject);renderProjectPicker();renderTimer()})}
@@ -205,4 +258,6 @@ $('editDate').onchange=renderEditDurations;$('saveDay').onclick=async()=>{const 
 $('importFile').onchange=async event=>{const file=event.target.files[0];if(!file)return;if(!confirm('导入会替换当前账号数据，确定继续吗？'))return;try{await apiFetch('/api/data/import',{method:'POST',body:JSON.parse(await file.text())});await loadData();toast('数据已导入')}catch(error){toast(error.message)}finally{event.target.value=''}};
 $('restoreBackup').onclick=async()=>{if(!confirm('恢复导入前的数据吗？'))return;try{await apiFetch('/api/data/restore',{method:'POST'});await loadData();toast('安全副本已恢复')}catch(error){toast(error.message)}};
 $('prevMonth').onclick=()=>{calendarDate=new Date(calendarDate.getFullYear(),calendarDate.getMonth()-1,1);loadCalendarKnowledge()};$('nextMonth').onclick=()=>{calendarDate=new Date(calendarDate.getFullYear(),calendarDate.getMonth()+1,1);loadCalendarKnowledge()};
+$('saveCountdown').onclick=saveCountdown;$('clearCountdown').onclick=clearCountdown;
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){renderCountdown();scheduleCountdownRerender()}});
 loadData().catch(error=>toast(error.message));

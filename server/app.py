@@ -89,6 +89,8 @@ class User(UserMixin, db.Model):
     is_admin = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
     auth_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     preferred_version = db.Column(db.String(12), nullable=False, default="classic", server_default="classic")
+    countdown_name = db.Column(db.String(20))
+    countdown_date = db.Column(db.Date)
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password, method="scrypt")
@@ -270,6 +272,10 @@ def initialize_database():
         statements.append("ALTER TABLE user ADD COLUMN logged_out_at DATETIME")
     if "preferred_version" not in columns:
         statements.append("ALTER TABLE user ADD COLUMN preferred_version VARCHAR(12) NOT NULL DEFAULT 'classic'")
+    if "countdown_name" not in columns:
+        statements.append("ALTER TABLE user ADD COLUMN countdown_name VARCHAR(20)")
+    if "countdown_date" not in columns:
+        statements.append("ALTER TABLE user ADD COLUMN countdown_date DATE")
     if statements:
         with db.engine.begin() as connection:
             for statement in statements:
@@ -300,6 +306,12 @@ def generate_temporary_password(length=20):
 def project_dict(project: Project):
     return {"id": project.external_id, "name": project.name, "color": project.color,
             "icon": project.icon, "archived": project.archived}
+
+
+def countdown_dict(user: User):
+    if not user.countdown_date:
+        return None
+    return {"name": user.countdown_name, "date": user.countdown_date.isoformat()}
 
 
 def get_projects(user_id):
@@ -1286,6 +1298,7 @@ def register_api_routes(app):
         bundle = build_bundle(current_user.id)
         bundle["timer"] = serialize_timer(timer)
         bundle["user"] = {"id": current_user.id, "username": current_user.username}
+        bundle["countdown"] = countdown_dict(current_user)
         return api_ok(bundle)
 
     @app.patch("/api/preferences/version")
@@ -1297,6 +1310,35 @@ def register_api_routes(app):
         current_user.preferred_version = version
         db.session.commit()
         return api_ok({"version": version, "url": url_for("pokemon_page" if version == "pokemon" else "dashboard")})
+
+    @app.patch("/api/preferences/countdown")
+    @login_required
+    def preferred_countdown():
+        body = parse_json_body()
+        if not isinstance(body, dict) or "date" not in body:
+            return api_error("目标日期无效")
+        raw_date = body.get("date")
+        if raw_date is None:
+            current_user.countdown_name = None
+            current_user.countdown_date = None
+            db.session.commit()
+            return api_ok(None)
+        if not isinstance(raw_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_date):
+            return api_error("目标日期无效")
+        try:
+            target_date = date.fromisoformat(raw_date)
+        except ValueError:
+            return api_error("目标日期无效")
+        raw_name = body.get("name")
+        if not isinstance(raw_name, str):
+            return api_error("目标名称需为 1-20 个字符")
+        name = raw_name.strip()
+        if not 1 <= len(name) <= 20:
+            return api_error("目标名称需为 1-20 个字符")
+        current_user.countdown_name = name
+        current_user.countdown_date = target_date
+        db.session.commit()
+        return api_ok(countdown_dict(current_user))
 
     @app.post("/api/pokemon/bootstrap")
     @login_required
